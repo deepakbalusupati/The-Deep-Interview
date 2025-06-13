@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+    <!-- Brain side of the logo -->
+    <path
+        d="M170 40C208 40 230 80 230 120C230 170 190 200 140 200C130 200 125 195 125 185V55C125 45 130 40 140 40C150 40 160 40 170 40Z"
+        fill="#a78bfa" stroke="none" />
+
+    <!-- Chat bubble side with pixels -->
+    <path
+        d="M110 40C100 40 95 45 95 55V160C95 170 90 175 80 175H50C40 175 35 170 35 160V55C35 45 40 40 50 40H110Z"
+        fill="#7c3aed" stroke="none" />
+
+    <!-- Chat bubble pointer -->
+    <path d="M80 175L95 200L95 175Z"
+        fill="#7c3aed" stroke="none" />
+
+    <!-- Brain curves -->
+    <path
+        d="M140 55C160 65 180 60 190 75C200 90 180 100 190 115C200 130 180 140 190 155C200 170 180 185 160 195"
+        fill="none" stroke="#111827" stroke-width="8" stroke-linecap="round" />
+
+    <!-- Digital squares in the chat bubble -->
+    <rect x="55" y="65" width="10" height="10" fill="#5b21b6" />
+    <rect x="75" y="65" width="10" height="10" fill="#5b21b6" />
+    <rect x="55" y="85" width="10" height="10" fill="#5b21b6" />
+    <rect x="75" y="85" width="10" height="10" fill="#5b21b6" />
+    <rect x="55" y="105" width="10" height="10" fill="#5b21b6" />
+    <rect x="75" y="105" width="10" height="10" fill="#5b21b6" />
+    <rect x="55" y="125" width="10" height="10" fill="#5b21b6" />
+    <rect x="75" y="125" width="10" height="10" fill="#5b21b6" />
+    <rect x="55" y="145" width="10" height="10" fill="#5b21b6" />
+    <rect x="75" y="145" width="10" height="10" fill="#5b21b6" />
+</svg> 
