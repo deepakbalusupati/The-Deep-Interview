@@ -65,6 +65,10 @@ const ResumeSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isActive: {
+    type: Boolean,
+    default: false,
+  },
   uploadedAt: {
     type: Date,
     default: Date.now,

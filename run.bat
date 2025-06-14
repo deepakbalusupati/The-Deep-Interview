@@ -1,0 +1,3 @@
+@echo off
+echo Starting The Deep Interview application...
+node run-app.js 

@@ -23,11 +23,11 @@ const Profile = () => {
   
   useEffect(() => {
     if (currentUser) {
-      setProfileData({
-        ...profileData,
+      setProfileData(prevData => ({
+        ...prevData,
         name: currentUser.name,
         email: currentUser.email,
-      });
+      }));
     }
   }, [currentUser]);
   

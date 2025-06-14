@@ -1,11 +1,29 @@
 import axios from "axios";
 
+// Determine the API base URL with fallback options
+const getBaseUrl = () => {
+  // Use environment variable if available
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+
+  // In development, use the full URL to avoid proxy issues
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:5001";
+  }
+
+  // In production, use the same origin
+  return window.location.origin;
+};
+
 // Create an axios instance with a base URL
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:5001",
+  baseURL: getBaseUrl(),
   headers: {
     "Content-Type": "application/json",
   },
+  timeout: 30000, // 30 seconds timeout
+  withCredentials: false, // Changed to false for development
 });
 
 // Add a request interceptor to add authentication token if available
@@ -41,6 +59,12 @@ api.interceptors.response.use(
         localStorage.removeItem("user");
         window.location.href = "/login";
       }
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error("No response received:", error.request);
+    } else {
+      // Something happened in setting up the request
+      console.error("Error setting up request:", error.message);
     }
 
     return Promise.reject(error);

@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import Button from '../components/ui/Button';
-import Spinner from '../components/ui/Spinner';
-import { AlertCircle, Upload, File, Trash2, Edit, FileText } from 'react-feather';
 import { useAuth } from '../context/AuthContext';
+import { AlertCircle, FileText, Edit2, Trash2, Star } from 'react-feather';
+import api from '../utils/api';
 
 const ResumeManager = () => {
   const { currentUser } = useAuth();
+  
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -14,6 +13,8 @@ const ResumeManager = () => {
   const [message, setMessage] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [resumeTitle, setResumeTitle] = useState('');
+  // These variables are reserved for future functionality
+  // eslint-disable-next-line no-unused-vars
   const [editingResumeId, setEditingResumeId] = useState(null);
   const [activeResumeId, setActiveResumeId] = useState(null);
 
@@ -22,16 +23,22 @@ const ResumeManager = () => {
     const fetchResumes = async () => {
       try {
         setLoading(true);
-        const res = await axios.get('/api/resume');
-        
-        if (res.data.success) {
-          setResumes(res.data.resumes);
+        // Only attempt to fetch if user is logged in
+        if (currentUser && currentUser._id) {
+          const res = await api.get(`/api/resume?userId=${currentUser._id}`);
           
-          // Set active resume if exists
-          const activeResume = res.data.resumes.find(r => r.isActive);
-          if (activeResume) {
-            setActiveResumeId(activeResume._id);
+          if (res.data.success) {
+            setResumes(res.data.resumes);
+            
+            // Set active resume if exists
+            const activeResume = res.data.resumes.find(r => r.isActive);
+            if (activeResume) {
+              setActiveResumeId(activeResume._id);
+            }
           }
+        } else {
+          // User not logged in or no user ID
+          setError('Please log in to manage resumes');
         }
       } catch (err) {
         console.error('Error fetching resumes:', err);
@@ -42,7 +49,7 @@ const ResumeManager = () => {
     };
 
     fetchResumes();
-  }, []);
+  }, [currentUser]);
 
   // Handle file selection
   const handleFileChange = (e) => {
@@ -89,6 +96,12 @@ const ResumeManager = () => {
       return;
     }
     
+    // Check if user is logged in
+    if (!currentUser || !currentUser._id) {
+      setError('You must be logged in to upload a resume');
+      return;
+    }
+    
     try {
       setUploading(true);
       setError(null);
@@ -98,10 +111,11 @@ const ResumeManager = () => {
       formData.append('title', resumeTitle);
       formData.append('userId', currentUser._id);
       
-      const res = await axios.post('/api/resume/upload', formData, {
+      const res = await api.post('/api/resume/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
-        }
+        },
+        timeout: 30000 // Increase timeout for large files
       });
       
       if (res.data.success) {
@@ -127,7 +141,7 @@ const ResumeManager = () => {
       try {
         setLoading(true);
         
-        const res = await axios.delete(`/api/resume/${resumeId}`);
+        const res = await api.delete(`/api/resume/${resumeId}`);
         
         if (res.data.success) {
           setResumes(resumes.filter(resume => resume._id !== resumeId));
@@ -158,7 +172,7 @@ const ResumeManager = () => {
       try {
         setLoading(true);
         
-        const res = await axios.patch(`/api/resume/${resumeId}`, {
+        const res = await api.patch(`/api/resume/${resumeId}`, {
           title: newTitle
         });
         
@@ -180,7 +194,7 @@ const ResumeManager = () => {
     try {
       setLoading(true);
       
-      const res = await axios.post(`/api/resume/${resumeId}/set-active`);
+      const res = await api.post(`/api/resume/${resumeId}/set-active`);
       
       if (res.data.success) {
         // Update local state
@@ -268,132 +282,129 @@ const ResumeManager = () => {
               >
                 Resume File (PDF only, max 5MB)
               </label>
-              <div className="mt-1 flex items-center">
-                <label 
-                  className="cursor-pointer w-full flex justify-center py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
-                >
-                  <span className="mr-2">
-                    <Upload className="h-5 w-5" />
-                  </span>
-                  <span>Select File</span>
-                  <input
-                    type="file"
-                    id="resume-upload"
-                    onChange={handleFileChange}
-                    accept=".pdf"
-                    className="sr-only"
-                  />
-                </label>
-              </div>
+              <input
+                type="file"
+                id="resume-upload"
+                accept=".pdf"
+                onChange={handleFileChange}
+                className="block w-full text-sm text-gray-500
+                  file:mr-4 file:py-2 file:px-4
+                  file:rounded-md file:border-0
+                  file:text-sm file:font-semibold
+                  file:bg-primary-50 file:text-primary-700
+                  hover:file:bg-primary-100"
+                required
+              />
               {selectedFile && (
-                <div className="mt-2 text-sm text-gray-500 flex items-center">
-                  <File className="h-4 w-4 mr-1" />
-                  <span>{selectedFile.name}</span>
-                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  Selected file: {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
+                </p>
               )}
             </div>
             
             <div className="flex justify-end">
-              <Button
+              <button
                 type="submit"
-                disabled={uploading || !selectedFile}
+                className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center"
+                disabled={uploading}
               >
                 {uploading ? (
                   <>
-                    <Spinner size="sm" className="mr-2" />
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                     Uploading...
                   </>
                 ) : (
                   <>
-                    <Upload className="h-4 w-4 mr-2" />
                     Upload Resume
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </form>
         </div>
         
         {/* Resumes List */}
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">
-              Your Resumes
-            </h2>
-          </div>
+        <div className="bg-white shadow-md rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">
+            Your Resumes
+          </h2>
           
           {loading ? (
-            <div className="p-6 flex justify-center">
-              <Spinner size="lg" />
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
-          ) : resumes.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p>You haven't uploaded any resumes yet.</p>
-              <p className="mt-2 text-sm">Upload a resume to get personalized interview questions.</p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-gray-200">
+          ) : resumes.length > 0 ? (
+            <div className="space-y-4">
               {resumes.map((resume) => (
-                <li key={resume._id} className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0">
-                        <div className={`rounded-md p-2 ${resume._id === activeResumeId ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-500'}`}>
-                          <FileText className="h-6 w-6" />
-                        </div>
+                <div 
+                  key={resume._id}
+                  className={`border rounded-lg p-4 ${
+                    resume.isActive ? 'border-primary-300 bg-primary-50' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-start space-x-3">
+                      <div className="bg-gray-100 rounded-lg p-2">
+                        <FileText className="text-gray-500" />
                       </div>
-                      <div className="ml-4">
-                        <h3 className="text-lg font-medium text-gray-900">
-                          {resume.title}
-                          {resume._id === activeResumeId && (
-                            <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-primary-100 text-primary-600">
-                              Active
+                      <div>
+                        <h3 className="font-medium text-gray-900">
+                          {resume.title || resume.name}
+                          {resume.isDefault && (
+                            <span className="ml-2 text-xs bg-primary-100 text-primary-800 px-2 py-0.5 rounded-full">
+                              Default
                             </span>
                           )}
                         </h3>
-                        <div className="mt-1 flex items-center text-sm text-gray-500">
-                          <span>Uploaded: {formatDate(resume.createdAt)}</span>
-                          {resume.updatedAt !== resume.createdAt && (
-                            <span className="ml-4">
-                              Updated: {formatDate(resume.updatedAt)}
-                            </span>
-                          )}
-                        </div>
+                        <p className="text-sm text-gray-500">
+                          Uploaded on {formatDate(resume.uploadedAt)}
+                        </p>
                       </div>
                     </div>
                     <div className="flex space-x-2">
-                      {resume._id !== activeResumeId && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSetActive(resume._id)}
-                          disabled={loading}
-                        >
-                          Set as Active
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                      <button
+                        onClick={() => handleSetActive(resume._id)}
+                        className={`p-1.5 rounded-md ${
+                          resume.isActive
+                            ? 'text-primary-600 bg-primary-100'
+                            : 'text-gray-400 hover:text-primary-600 hover:bg-gray-100'
+                        }`}
+                        title="Set as active"
+                      >
+                        <Star size={16} />
+                      </button>
+                      <button
                         onClick={() => handleEditTitle(resume._id)}
-                        disabled={loading}
+                        className="p-1.5 rounded-md text-gray-400 hover:text-primary-600 hover:bg-gray-100"
+                        title="Edit title"
                       >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                        <Edit2 size={16} />
+                      </button>
+                      <button
                         onClick={() => handleDelete(resume._id)}
-                        disabled={loading}
+                        className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-gray-100"
+                        title="Delete resume"
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-400 mb-4">
+                <FileText className="h-12 w-12 mx-auto" />
+              </div>
+              <p className="text-gray-600 mb-2">You haven't uploaded any resumes yet.</p>
+              <p className="text-gray-500 text-sm">
+                Upload a resume to get personalized interview questions.
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -401,4 +412,4 @@ const ResumeManager = () => {
   );
 };
 
-export default ResumeManager; 
+export default ResumeManager;

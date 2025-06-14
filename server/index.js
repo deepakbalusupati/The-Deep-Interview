@@ -28,19 +28,26 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const app = express();
 const server = http.createServer(app);
 
-// Configure Socket.io
+// Configure Socket.io with more flexible CORS
 const io = new Server(server, {
   cors: {
-    origin: CLIENT_URL,
+    origin: "*", // Allow all origins temporarily for debugging
     methods: ["GET", "POST"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   },
+  transports: ["websocket", "polling"],
+  pingTimeout: 30000,
+  pingInterval: 25000,
 });
 
-// Middleware
+// Middleware with more flexible CORS
 app.use(
   cors({
-    origin: CLIENT_URL,
+    origin: "*", // Allow all origins temporarily for debugging
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(bodyParser.json());
@@ -51,6 +58,9 @@ const uploadsDir = path.join(__dirname, "..", "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+// Serve files from the uploads directory
+app.use("/uploads", express.static(uploadsDir));
 
 // Set up file uploads
 const storage = multer.diskStorage({

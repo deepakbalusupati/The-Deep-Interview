@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Briefcase, ChevronDown, Clock, FileText, Shield } from 'react-feather';
+import api from '../utils/api';
+import { v4 as uuidv4 } from 'uuid';
 
 function InterviewSetup() {
   const { currentUser } = useAuth();
@@ -18,6 +19,34 @@ function InterviewSetup() {
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [serverAvailable, setServerAvailable] = useState(true);
+
+  useEffect(() => {
+    const checkServerHealth = async () => {
+      try {
+        const healthCheck = await api.get('/api/health', { timeout: 3000 });
+        if (healthCheck.data.status === 'ok') {
+          setServerAvailable(true);
+          setError('');
+        } else {
+          setServerAvailable(false);
+          setError('Server appears to be unavailable. You can still start an interview in offline mode.');
+        }
+      } catch (err) {
+        console.error('Health check failed:', err);
+        setServerAvailable(false);
+        setError('Server appears to be unavailable. You can still start an interview in offline mode.');
+      }
+    };
+
+    // Check server health immediately
+    checkServerHealth();
+
+    // Set up a periodic health check
+    const healthCheckInterval = setInterval(checkServerHealth, 10000);
+
+    return () => clearInterval(healthCheckInterval);
+  }, []);
 
   useEffect(() => {
     const fetchSetupData = async () => {
@@ -25,18 +54,51 @@ function InterviewSetup() {
         setLoading(true);
         
         // Fetch popular job positions
-        const positionsResponse = await axios.get('/api/interview/positions');
-        setJobPositions(positionsResponse.data.positions);
+        if (serverAvailable) {
+          try {
+            const positionsResponse = await api.get('/api/interview/positions');
+            setJobPositions(positionsResponse.data.positions);
+          } catch (err) {
+            console.error('Error fetching positions:', err);
+            // Use default positions if server fails
+            setJobPositions([
+              'Software Engineer',
+              'Frontend Developer',
+              'Backend Developer',
+              'Full Stack Developer',
+              'Data Scientist',
+              'Product Manager',
+              'UX Designer',
+              'DevOps Engineer'
+            ]);
+          }
+        } else {
+          // Use default positions if server is unavailable
+          setJobPositions([
+            'Software Engineer',
+            'Frontend Developer',
+            'Backend Developer',
+            'Full Stack Developer',
+            'Data Scientist',
+            'Product Manager',
+            'UX Designer',
+            'DevOps Engineer'
+          ]);
+        }
         
-        // Fetch user's resumes
-        if (currentUser?._id) {
-          const resumesResponse = await axios.get(`/api/resume?userId=${currentUser._id}`);
-          setResumes(resumesResponse.data.resumes);
-          
-          // Set default resume if available
-          const defaultResume = resumesResponse.data.resumes.find(r => r.isDefault);
-          if (defaultResume) {
-            setResumeId(defaultResume._id);
+        // Fetch user's resumes if server is available
+        if (serverAvailable && currentUser?._id) {
+          try {
+            const resumesResponse = await api.get(`/api/resume?userId=${currentUser._id}`);
+            setResumes(resumesResponse.data.resumes);
+            
+            // Set default resume if available
+            const defaultResume = resumesResponse.data.resumes.find(r => r.isDefault);
+            if (defaultResume) {
+              setResumeId(defaultResume._id);
+            }
+          } catch (err) {
+            console.error('Error fetching resumes:', err);
           }
         }
         
@@ -58,13 +120,12 @@ function InterviewSetup() {
         setLoading(false);
       } catch (err) {
         console.error('Error fetching setup data:', err);
-        setError('Failed to load setup data. Please try again.');
         setLoading(false);
       }
     };
 
     fetchSetupData();
-  }, [currentUser]);
+  }, [currentUser, serverAvailable]);
 
   const handleJobPositionChange = (e) => {
     setJobPosition(e.target.value);
@@ -80,115 +141,106 @@ function InterviewSetup() {
     try {
       setLoading(true);
       setError('');
-      console.log('Creating interview session with:', { 
-        userId: currentUser?._id, 
-        jobPosition, 
-        interviewType, 
-        skillLevel, 
-        resumeId: resumeId || undefined 
-      });
       
-      // First check if the server is healthy
-      try {
-        const healthCheck = await axios.get('/api/health', { timeout: 5000 });
-        if (!healthCheck.data.status === 'ok') {
-          throw new Error('Server health check failed');
-        }
-      } catch (healthErr) {
-        console.error('Health check failed:', healthErr);
-        setError('Server appears to be unavailable. Please try again in a moment.');
-        setLoading(false);
-        return;
-      }
-      
-      // Create a new interview session with retry logic
-      let response;
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      // Create a function outside the loop to avoid ESLint warning
-      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-      
-      while (retryCount < maxRetries) {
+      // Check if the server is available
+      if (serverAvailable) {
+        // Try to create a session on the server
         try {
-          console.log(`Attempt ${retryCount + 1} to create session`);
-          response = await axios.post('/api/interview/sessions', {
-            userId: currentUser?._id || null, // Allow anonymous users
-            jobPosition,
-            interviewType,
-            skillLevel,
-            resumeId: resumeId || undefined,
-          }, {
-            timeout: 10000 // 10 seconds timeout
-          });
+          // Create a new interview session with retry logic
+          let response;
+          let retryCount = 0;
+          const maxRetries = 2;
           
-          console.log('Session created successfully');
-          break;
-        } catch (err) {
-          retryCount++;
-          console.error(`Attempt ${retryCount} failed:`, err);
+          // Create a function outside the loop to avoid ESLint warning
+          const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           
-          if (retryCount >= maxRetries) {
-            throw err; // Re-throw the error after all retries fail
+          while (retryCount < maxRetries) {
+            try {
+              console.log(`Attempt ${retryCount + 1} to create session`);
+              response = await api.post('/api/interview/sessions', {
+                userId: currentUser?._id || null, // Allow anonymous users
+                jobPosition,
+                interviewType,
+                skillLevel,
+                resumeId: resumeId || undefined,
+              }, {
+                timeout: 5000 // 5 seconds timeout
+              });
+              
+              console.log('Session created successfully');
+              break;
+            } catch (err) {
+              retryCount++;
+              console.error(`Attempt ${retryCount} failed:`, err);
+              
+              if (retryCount >= maxRetries) {
+                throw err; // Re-throw the error after all retries fail
+              }
+              
+              // Wait before retrying (exponential backoff)
+              await delay(1000 * retryCount);
+            }
           }
           
-          // Wait before retrying (exponential backoff)
-          await delay(1000 * retryCount);
+          console.log('API Response:', response.data);
+          
+          // Navigate to the interview session
+          if (response.data && response.data.session && response.data.session.sessionId) {
+            const sessionId = response.data.session.sessionId;
+            console.log('Navigating to session:', sessionId);
+            
+            // Save session info to localStorage for recovery if needed
+            localStorage.setItem('lastInterviewSession', JSON.stringify({
+              sessionId,
+              jobPosition,
+              interviewType,
+              skillLevel,
+              timestamp: new Date().toISOString()
+            }));
+            
+            setLoading(false); // Set loading to false before navigation
+            
+            // Navigate directly without timeout
+            navigate(`/interview/session/${sessionId}`);
+          } else {
+            throw new Error('Invalid server response');
+          }
+        } catch (err) {
+          console.error('Error creating interview session on server:', err);
+          // Fall back to offline mode
+          createOfflineSession();
         }
-      }
-      
-      console.log('API Response:', response.data);
-      
-      // Navigate to the interview session
-      if (response.data && response.data.session && response.data.session.sessionId) {
-        const sessionId = response.data.session.sessionId;
-        console.log('Navigating to session:', sessionId);
-        
-        // Save session info to localStorage for recovery if needed
-        localStorage.setItem('lastInterviewSession', JSON.stringify({
-          sessionId,
-          jobPosition,
-          interviewType,
-          skillLevel,
-          timestamp: new Date().toISOString()
-        }));
-        
-        setLoading(false); // Set loading to false before navigation
-        
-        // Navigate directly without timeout
-        navigate(`/interview/session/${sessionId}`);
       } else {
-        console.error('Invalid response format:', response.data);
-        setError('Failed to create interview session. Invalid server response.');
-        setLoading(false);
+        // Create an offline session
+        createOfflineSession();
       }
     } catch (err) {
-      console.error('Error creating interview session:', err);
-      let errorMessage = 'Failed to create interview session';
-      
-      if (err.response) {
-        console.error('Error response data:', err.response.data);
-        console.error('Error response status:', err.response.status);
-        
-        // Special handling for common errors
-        if (err.response.status === 400) {
-          errorMessage = `Invalid input: ${err.response.data?.message || 'Please check your inputs'}`;
-        } else if (err.response.status === 500) {
-          errorMessage = 'Server error. Please try again later.';
-        } else {
-          errorMessage = `${errorMessage}: ${err.response.data?.message || err.response.statusText}`;
-        }
-      } else if (err.request) {
-        console.error('Error request:', err.request);
-        errorMessage = `${errorMessage}: No response received from server. Please check your connection.`;
-      } else {
-        console.error('Error message:', err.message);
-        errorMessage = `${errorMessage}: ${err.message}`;
-      }
-      
-      setError(errorMessage);
+      console.error('Error in handleStartInterview:', err);
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }
+  };
+
+  // Function to create an offline session when the server is unavailable
+  const createOfflineSession = () => {
+    // Generate a random session ID
+    const sessionId = uuidv4();
+    
+    // Save session info to localStorage
+    localStorage.setItem('lastInterviewSession', JSON.stringify({
+      sessionId,
+      jobPosition,
+      interviewType,
+      skillLevel,
+      timestamp: new Date().toISOString(),
+      isOfflineSession: true
+    }));
+    
+    console.log('Created offline session:', sessionId);
+    setLoading(false);
+    
+    // Navigate to the interview session
+    navigate(`/interview/session/${sessionId}`);
   };
 
   return (
@@ -200,7 +252,7 @@ function InterviewSetup() {
         </p>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 rounded-md p-4 mb-6">
+          <div className={`border rounded-md p-4 mb-6 ${serverAvailable ? 'bg-red-50 border-red-200 text-red-600' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
             {error}
           </div>
         )}
@@ -249,12 +301,12 @@ function InterviewSetup() {
                   name="interviewType"
                   value={interviewType}
                   onChange={(e) => setInterviewType(e.target.value)}
-                  className="form-input pl-10 appearance-none"
+                  className="form-select pl-10"
                 >
                   <option value="technical">Technical</option>
                   <option value="behavioral">Behavioral</option>
-                  <option value="mixed">Mixed (Technical & Behavioral)</option>
-                  <option value="custom">Custom</option>
+                  <option value="system-design">System Design</option>
+                  <option value="mixed">Mixed</option>
                 </select>
                 <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                   <ChevronDown className="text-gray-400" size={18} />
@@ -264,40 +316,38 @@ function InterviewSetup() {
 
             {/* Skill Level */}
             <div>
-              <label htmlFor="skillLevel" className="form-label">
-                Skill Level
-              </label>
+              <label className="form-label">Skill Level</label>
               <div className="grid grid-cols-3 gap-4">
                 <button
                   type="button"
-                  className={`py-3 border rounded-md ${
-                    skillLevel === 'beginner'
-                      ? 'bg-primary-50 border-primary-500 text-primary-700'
-                      : 'border-gray-300 text-gray-700'
-                  }`}
                   onClick={() => setSkillLevel('beginner')}
+                  className={`py-3 px-4 border rounded-lg text-center ${
+                    skillLevel === 'beginner'
+                      ? 'bg-primary-50 border-primary-300 text-primary-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
                 >
                   Beginner
                 </button>
                 <button
                   type="button"
-                  className={`py-3 border rounded-md ${
-                    skillLevel === 'intermediate'
-                      ? 'bg-primary-50 border-primary-500 text-primary-700'
-                      : 'border-gray-300 text-gray-700'
-                  }`}
                   onClick={() => setSkillLevel('intermediate')}
+                  className={`py-3 px-4 border rounded-lg text-center ${
+                    skillLevel === 'intermediate'
+                      ? 'bg-primary-50 border-primary-300 text-primary-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
                 >
                   Intermediate
                 </button>
                 <button
                   type="button"
-                  className={`py-3 border rounded-md ${
-                    skillLevel === 'expert'
-                      ? 'bg-primary-50 border-primary-500 text-primary-700'
-                      : 'border-gray-300 text-gray-700'
-                  }`}
                   onClick={() => setSkillLevel('expert')}
+                  className={`py-3 px-4 border rounded-lg text-center ${
+                    skillLevel === 'expert'
+                      ? 'bg-primary-50 border-primary-300 text-primary-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
                 >
                   Expert
                 </button>
@@ -318,12 +368,13 @@ function InterviewSetup() {
                   name="resumeId"
                   value={resumeId}
                   onChange={(e) => setResumeId(e.target.value)}
-                  className="form-input pl-10 appearance-none"
+                  className="form-select pl-10"
+                  disabled={!serverAvailable || resumes.length === 0}
                 >
                   <option value="">No Resume</option>
                   {resumes.map((resume) => (
                     <option key={resume._id} value={resume._id}>
-                      {resume.name} {resume.isDefault ? '(Default)' : ''}
+                      {resume.title}
                     </option>
                   ))}
                 </select>
@@ -336,7 +387,7 @@ function InterviewSetup() {
               </p>
             </div>
 
-            {/* Estimated Duration */}
+            {/* Duration */}
             <div>
               <label htmlFor="duration" className="form-label">
                 Estimated Duration (minutes)
@@ -350,7 +401,7 @@ function InterviewSetup() {
                   name="duration"
                   value={duration}
                   onChange={(e) => setDuration(parseInt(e.target.value))}
-                  className="form-input pl-10 appearance-none"
+                  className="form-select pl-10"
                 >
                   <option value="15">15 minutes</option>
                   <option value="30">30 minutes</option>
@@ -367,37 +418,27 @@ function InterviewSetup() {
             <div className="pt-4">
               <button
                 type="submit"
-                className="w-full btn btn-primary py-3 flex justify-center items-center"
+                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
                 disabled={loading}
               >
                 {loading ? (
-                  <span className="flex items-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Setting up your interview...
+                    Setting up interview...
                   </span>
                 ) : (
                   'Start Interview'
                 )}
               </button>
+              
+              {!serverAvailable && (
+                <p className="text-sm text-yellow-600 mt-2">
+                  You are in offline mode. The interview will use pre-loaded questions.
+                </p>
+              )}
             </div>
           </div>
         </form>

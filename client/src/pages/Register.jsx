@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,12 +8,26 @@ function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, serverAvailable, checkServerHealth } = useAuth();
+
+  useEffect(() => {
+    // Check server availability on component mount
+    const checkServer = async () => {
+      await checkServerHealth();
+    };
+    
+    checkServer();
+  }, [checkServerHealth]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Clear previous messages
+    setError('');
+    setSuccessMessage('');
     
     // Validation
     if (!name || !email || !password || !confirmPassword) {
@@ -29,13 +43,20 @@ function Register() {
     }
 
     try {
-      setError('');
       setLoading(true);
       
       const result = await register(name, email, password);
       
       if (result.success) {
-        navigate('/dashboard');
+        if (result.message) {
+          setSuccessMessage(result.message);
+          // Give user time to read the message before redirecting
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 2000);
+        } else {
+          navigate('/dashboard');
+        }
       } else {
         setError(result.message);
       }
@@ -64,9 +85,21 @@ function Register() {
         </div>
         
         <form className="mt-8 space-y-6 animate-slide-up" onSubmit={handleSubmit}>
+          {!serverAvailable && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-md p-4 text-sm animate-fade-in">
+              Server appears to be unavailable. You can still create an account in offline mode, but some features may be limited.
+            </div>
+          )}
+          
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 rounded-md p-4 text-sm animate-fade-in">
               {error}
+            </div>
+          )}
+          
+          {successMessage && (
+            <div className="bg-green-50 border border-green-200 text-green-600 rounded-md p-4 text-sm animate-fade-in">
+              {successMessage}
             </div>
           )}
           

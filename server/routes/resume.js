@@ -24,8 +24,8 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   fileFilter: function (req, file, cb) {
-    // Accept only pdf, docx, and txt files
-    const filetypes = /pdf|docx|txt/;
+    // Accept only pdf files
+    const filetypes = /pdf/;
     const extname = filetypes.test(
       path.extname(file.originalname).toLowerCase()
     );
@@ -34,10 +34,10 @@ const upload = multer({
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error("Error: Only PDF, DOCX, and TXT files are allowed!"));
+      cb(new Error("Error: Only PDF files are allowed!"));
     }
   },
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB file size limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
 // Upload a new resume
@@ -49,11 +49,14 @@ router.get("/", resumeController.getUserResumes);
 // Get a specific resume by ID
 router.get("/:resumeId", resumeController.getResumeById);
 
+// Update resume title
+router.patch("/:resumeId", resumeController.updateResumeTitle);
+
 // Delete a resume
 router.delete("/:resumeId", resumeController.deleteResume);
 
 // Set a resume as default
-router.put("/:resumeId/default", resumeController.setDefaultResume);
+router.post("/:resumeId/set-active", resumeController.setDefaultResume);
 
 // Analyze a resume
 router.post("/analyze", resumeController.analyzeResume);

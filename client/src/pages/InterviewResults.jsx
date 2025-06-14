@@ -6,6 +6,7 @@ import { ArrowLeft, Download, ThumbsUp, ThumbsDown } from 'react-feather';
 
 function InterviewResults() {
   const { sessionId } = useParams();
+  // eslint-disable-next-line no-unused-vars
   const { currentUser } = useAuth();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);

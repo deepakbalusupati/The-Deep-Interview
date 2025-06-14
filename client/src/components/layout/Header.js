@@ -9,7 +9,6 @@ import {
   FileText,
   Terminal,
   LogOut,
-  Mic,
 } from "react-feather";
 import logo from "../../assets/images/logo.svg";
 
