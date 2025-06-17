@@ -273,19 +273,28 @@ exports.getInterviewHistory = async (req, res) => {
       });
     }
 
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     // Get the user's interview sessions
     const interviewSessions = await InterviewSession.find({ userId }).sort({
       startTime: -1,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: interviewSessions.length,
-      interviewSessions,
+      interviewSessions: interviewSessions || [],
     });
   } catch (error) {
     console.error("Error getting interview history:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to get interview history",
       error: error.message,
@@ -302,6 +311,15 @@ exports.getStatistics = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "User ID is required",
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
       });
     }
 
@@ -325,7 +343,7 @@ exports.getStatistics = async (req, res) => {
 
     interviewSessions.forEach((session) => {
       // Count total questions
-      totalQuestions += session.questions.length;
+      totalQuestions += session.questions?.length || 0;
 
       // Sum up durations
       if (session.duration) {
@@ -388,13 +406,13 @@ exports.getStatistics = async (req, res) => {
         .map(([position, count]) => ({ position, count })),
     };
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       statistics,
     });
   } catch (error) {
     console.error("Error getting user statistics:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to get statistics",
       error: error.message,

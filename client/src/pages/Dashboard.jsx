@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { BarChart2, Calendar, Clock, FileText, PlusCircle, User } from 'react-feather';
+import api from '../utils/api';
 
 function Dashboard() {
   const { currentUser } = useAuth();
@@ -15,32 +16,63 @@ function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
+        setError('');
+        
+        if (!currentUser?._id) {
+          setLoading(false);
+          return;
+        }
         
         // Fetch interview history
-        const historyResponse = await axios.get(`/api/user/history?userId=${currentUser._id}`);
-        setInterviewHistory(historyResponse.data.interviewSessions.slice(0, 5)); // Get latest 5 sessions
+        const historyResponse = await api.get(`/api/user/history?userId=${currentUser._id}`);
+        
+        if (historyResponse.data && historyResponse.data.success) {
+          setInterviewHistory(historyResponse.data.interviewSessions?.slice(0, 5) || []); // Get latest 5 sessions
+        } else {
+          console.warn('Invalid history response format:', historyResponse.data);
+          setInterviewHistory([]);
+        }
         
         // Fetch user statistics
-        const statsResponse = await axios.get(`/api/user/statistics?userId=${currentUser._id}`);
-        setStats(statsResponse.data.statistics);
+        const statsResponse = await api.get(`/api/user/statistics?userId=${currentUser._id}`);
+        
+        if (statsResponse.data && statsResponse.data.success) {
+          setStats(statsResponse.data.statistics || {
+            totalInterviews: 0,
+            totalQuestions: 0,
+            averageScore: 0,
+            averageDurationMinutes: 0,
+          });
+        } else {
+          console.warn('Invalid statistics response format:', statsResponse.data);
+          setStats({
+            totalInterviews: 0,
+            totalQuestions: 0,
+            averageScore: 0,
+            averageDurationMinutes: 0,
+          });
+        }
         
         setLoading(false);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
-        setError('Failed to load dashboard data. Please try again later.');
+        api.handleError(err, setError);
         setLoading(false);
       }
     };
 
     if (currentUser?._id) {
       fetchDashboardData();
+    } else {
+      setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, retryCount]);
 
   // Format date
   const formatDate = (dateString) => {
@@ -48,12 +80,16 @@ function Dashboard() {
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Welcome back, {currentUser?.name}!</p>
+          <p className="text-gray-600">Welcome back, {currentUser?.name || 'User'}!</p>
         </div>
         <div className="mt-4 md:mt-0">
           <Link
@@ -67,8 +103,14 @@ function Dashboard() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-md p-4 mb-6">
-          {error}
+        <div className="bg-red-50 border border-red-200 text-red-600 rounded-md p-4 mb-6 flex justify-between items-center">
+          <span>{error}</span>
+          <button 
+            onClick={handleRetry}
+            className="text-primary-600 hover:text-primary-800 font-medium ml-4"
+          >
+            Retry
+          </button>
         </div>
       )}
 

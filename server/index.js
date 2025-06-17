@@ -134,15 +134,36 @@ global.mongoConnected = false;
 // Connect to MongoDB
 console.log(`Connecting to MongoDB at: ${MONGO_URI}`);
 mongoose
-  .connect(MONGO_URI)
+  .connect(MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+  })
   .then(() => {
-    console.log("MongoDB connected");
+    console.log("MongoDB connected successfully");
     global.mongoConnected = true;
   })
   .catch((err) => {
     console.error("MongoDB connection error:", err);
     global.mongoConnected = false;
   });
+
+// Add middleware to check MongoDB connection
+app.use((req, res, next) => {
+  // Skip health check routes
+  if (req.path.startsWith("/health") || req.path === "/api/health") {
+    return next();
+  }
+
+  if (!global.mongoConnected) {
+    console.error("MongoDB not connected, request rejected");
+    return res.status(503).json({
+      success: false,
+      message: "Database service unavailable. Please try again later.",
+    });
+  }
+  next();
+});
 
 // Start server
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
