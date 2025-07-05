@@ -20,10 +20,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate initial loading
+    // Simulate initial loading with shorter delay
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 1000);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, []);
@@ -50,10 +50,28 @@ function App() {
         <Header />
         <main className="flex-grow animate-fade-in">
           <Routes>
+            {/* Public routes */}
             <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
 
+            {/* Auth routes - redirect if already logged in */}
+            <Route
+              path="/login"
+              element={
+                <PrivateRoute requireAuth={false}>
+                  <Login />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/register"
+              element={
+                <PrivateRoute requireAuth={false}>
+                  <Register />
+                </PrivateRoute>
+              }
+            />
+
+            {/* Protected routes */}
             <Route
               path="/dashboard"
               element={
@@ -72,10 +90,11 @@ function App() {
               }
             />
 
+            {/* Interview session allows offline access */}
             <Route
               path="/interview/session/:sessionId"
               element={
-                <PrivateRoute>
+                <PrivateRoute requireAuth={false}>
                   <InterviewSession />
                 </PrivateRoute>
               }
@@ -108,6 +127,7 @@ function App() {
               }
             />
 
+            {/* 404 route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
