@@ -20,6 +20,8 @@ function InterviewSetup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [serverAvailable, setServerAvailable] = useState(true);
+  const [analyzingResume, setAnalyzingResume] = useState(false);
+  const [resumesFetched, setResumesFetched] = useState(false);
 
   useEffect(() => {
     const checkServerHealth = async () => {
@@ -89,18 +91,32 @@ function InterviewSetup() {
         // Fetch user's resumes if server is available
         if (serverAvailable && currentUser?._id) {
           try {
-            const resumesResponse = await api.get(`/api/resume?userId=${currentUser._id}`);
-            setResumes(resumesResponse.data.resumes);
+            console.log('Fetching resumes for user:', currentUser._id);
+            const resumesResponse = await api.get('/api/resume');
+            console.log('Resume response:', resumesResponse.data);
             
-            // Set default resume if available
-            const defaultResume = resumesResponse.data.resumes.find(r => r.isDefault);
-            if (defaultResume) {
-              setResumeId(defaultResume._id);
+            if (resumesResponse.data.success) {
+              setResumes(resumesResponse.data.resumes || []);
+              
+              // Set default resume if available
+              const defaultResume = resumesResponse.data.resumes?.find(r => r.isDefault);
+              if (defaultResume) {
+                setResumeId(defaultResume._id);
+              }
+            } else {
+              console.log('Resume fetch not successful:', resumesResponse.data);
+              setResumes([]);
             }
           } catch (err) {
             console.error('Error fetching resumes:', err);
+            setResumes([]);
           }
+        } else {
+          console.log('Not fetching resumes - serverAvailable:', serverAvailable, 'currentUser._id:', currentUser?._id);
+          setResumes([]);
         }
+        
+        setResumesFetched(true);
         
         // Set default job position from user's profile if available
         if (currentUser?.professionalDetails?.currentPosition) {
@@ -131,11 +147,54 @@ function InterviewSetup() {
     setJobPosition(e.target.value);
   };
 
+  const handleResumeChange = async (e) => {
+    const selectedResumeId = e.target.value;
+    setResumeId(selectedResumeId);
+    
+    if (selectedResumeId && serverAvailable) {
+      try {
+        setAnalyzingResume(true);
+        setError('');
+        
+        // Get the selected resume
+        const selectedResume = resumes.find(r => r._id === selectedResumeId);
+        if (!selectedResume) {
+          setError('Selected resume not found');
+          return;
+        }
+        
+        // Call backend to analyze resume and extract job position
+        const response = await api.post('/api/resume/extract-position', {
+          resumeId: selectedResumeId
+        });
+        
+        if (response.data.success && response.data.suggestedPosition) {
+          setJobPosition(response.data.suggestedPosition);
+        }
+        
+      } catch (err) {
+        console.error('Error analyzing resume:', err);
+        // Don't show error for resume analysis failure, just continue
+      } finally {
+        setAnalyzingResume(false);
+      }
+    }
+  };
+
   const handleStartInterview = async (e) => {
     e.preventDefault();
     
-    if (!jobPosition) {
-      return setError('Please enter a job position');
+    // Validate all required fields
+    const missingFields = [];
+    
+    if (!jobPosition) missingFields.push('Job Position');
+    if (!interviewType) missingFields.push('Interview Type');
+    if (!skillLevel) missingFields.push('Skill Level');
+    if (!resumeId) missingFields.push('Resume');
+    if (!duration) missingFields.push('Duration');
+    
+    if (missingFields.length > 0) {
+      return setError(`Please complete the following required fields: ${missingFields.join(', ')}`);
     }
 
     try {
@@ -248,12 +307,47 @@ function InterviewSetup() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Interview Setup</h1>
         <p className="text-gray-600 mb-8">
-          Configure your interview session to get personalized questions.
+          Configure your interview session to get personalized questions. All fields marked with * are required.
         </p>
 
         {error && (
           <div className={`border rounded-md p-4 mb-6 ${serverAvailable ? 'bg-red-50 border-red-200 text-red-600' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
             {error}
+          </div>
+        )}
+
+
+
+        {serverAvailable && resumesFetched && resumes.length === 0 && (
+          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 mb-4">
+                <FileText className="h-6 w-6 text-primary-600" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No resumes found</h3>
+              <p className="text-gray-500 mb-6">
+                To start your interview, you'll need to upload a resume first. Your resume helps us create personalized questions tailored to your experience.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <a 
+                  href="/resume" 
+                  className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 transition-colors shadow-sm"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Upload Resume
+                </a>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -285,12 +379,17 @@ function InterviewSetup() {
                   ))}
                 </datalist>
               </div>
+              {resumeId && jobPosition && (
+                <p className="text-sm text-green-600 mt-1">
+                  ✓ Job position auto-filled from your resume (you can edit this if needed)
+                </p>
+              )}
             </div>
 
             {/* Interview Type */}
             <div>
               <label htmlFor="interviewType" className="form-label">
-                Interview Type
+                Interview Type*
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -302,6 +401,7 @@ function InterviewSetup() {
                   value={interviewType}
                   onChange={(e) => setInterviewType(e.target.value)}
                   className="form-select pl-10"
+                  required
                 >
                   <option value="technical">Technical</option>
                   <option value="behavioral">Behavioral</option>
@@ -316,48 +416,54 @@ function InterviewSetup() {
 
             {/* Skill Level */}
             <div>
-              <label className="form-label">Skill Level</label>
+              <label className="form-label">Skill Level*</label>
               <div className="grid grid-cols-3 gap-4">
                 <button
                   type="button"
                   onClick={() => setSkillLevel('beginner')}
-                  className={`py-3 px-4 border rounded-lg text-center ${
+                  className={`py-3 px-4 border rounded-lg text-center transition-colors ${
                     skillLevel === 'beginner'
                       ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-primary-200'
                   }`}
                 >
+                  {skillLevel === 'beginner' && <span className="mr-1">✓</span>}
                   Beginner
                 </button>
                 <button
                   type="button"
                   onClick={() => setSkillLevel('intermediate')}
-                  className={`py-3 px-4 border rounded-lg text-center ${
+                  className={`py-3 px-4 border rounded-lg text-center transition-colors ${
                     skillLevel === 'intermediate'
                       ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-primary-200'
                   }`}
                 >
+                  {skillLevel === 'intermediate' && <span className="mr-1">✓</span>}
                   Intermediate
                 </button>
                 <button
                   type="button"
                   onClick={() => setSkillLevel('expert')}
-                  className={`py-3 px-4 border rounded-lg text-center ${
+                  className={`py-3 px-4 border rounded-lg text-center transition-colors ${
                     skillLevel === 'expert'
                       ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-primary-200'
                   }`}
                 >
+                  {skillLevel === 'expert' && <span className="mr-1">✓</span>}
                   Expert
                 </button>
               </div>
+              <p className="text-sm text-gray-500 mt-2">
+                Please select your skill level to continue.
+              </p>
             </div>
 
             {/* Resume Selection */}
             <div>
               <label htmlFor="resumeId" className="form-label">
-                Resume (Optional)
+                Resume*
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -367,14 +473,18 @@ function InterviewSetup() {
                   id="resumeId"
                   name="resumeId"
                   value={resumeId}
-                  onChange={(e) => setResumeId(e.target.value)}
-                  className="form-select pl-10"
-                  disabled={!serverAvailable || resumes.length === 0}
+                  onChange={handleResumeChange}
+                  className={`form-select pl-10 ${(!serverAvailable || analyzingResume || !resumesFetched) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!serverAvailable || analyzingResume || !resumesFetched}
+                  required
                 >
-                  <option value="">No Resume</option>
+                  <option value="">
+                    {!resumesFetched ? 'Loading resumes...' : 
+                     resumes.length === 0 ? 'No resumes available' : 'Select'}
+                  </option>
                   {resumes.map((resume) => (
                     <option key={resume._id} value={resume._id}>
-                      {resume.title}
+                      {resume.name || resume.title}
                     </option>
                   ))}
                 </select>
@@ -383,14 +493,31 @@ function InterviewSetup() {
                 </span>
               </div>
               <p className="text-sm text-gray-500 mt-1">
-                Adding a resume allows us to generate personalized questions based on your experience.
+                {resumes.length === 0 ? (
+                  <>
+                    No resumes found. 
+                    <a href="/resume" className="text-primary-600 hover:text-primary-800 underline ml-1">
+                      Upload a resume first
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    The system will analyze your resume to determine the best job position for your interview.
+                    {analyzingResume && (
+                      <span className="text-primary-600 ml-2">
+                        <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600 mr-1"></span>
+                        Analyzing resume...
+                      </span>
+                    )}
+                  </>
+                )}
               </p>
             </div>
 
             {/* Duration */}
             <div>
               <label htmlFor="duration" className="form-label">
-                Estimated Duration (minutes)
+                Estimated Duration (minutes)*
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -402,6 +529,7 @@ function InterviewSetup() {
                   value={duration}
                   onChange={(e) => setDuration(parseInt(e.target.value))}
                   className="form-select pl-10"
+                  required
                 >
                   <option value="15">15 minutes</option>
                   <option value="30">30 minutes</option>
@@ -418,8 +546,8 @@ function InterviewSetup() {
             <div className="pt-4">
               <button
                 type="submit"
-                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
-                disabled={loading}
+                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                disabled={loading || (serverAvailable && resumes.length === 0) || !jobPosition || !interviewType || !skillLevel || !resumeId || !duration}
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
@@ -429,6 +557,10 @@ function InterviewSetup() {
                     </svg>
                     Setting up interview...
                   </span>
+                ) : serverAvailable && resumes.length === 0 ? (
+                  'Upload Resume First'
+                ) : (!jobPosition || !interviewType || !skillLevel || !resumeId || !duration) ? (
+                  'Complete All Fields'
                 ) : (
                   'Start Interview'
                 )}

@@ -37,12 +37,14 @@ exports.uploadResume = async (req, res) => {
       });
     }
 
-    const { userId, title } = req.body;
+    // Get userId from authenticated user (set by verifyToken middleware)
+    const userId = req.user._id;
+    const { title } = req.body;
 
     if (!userId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "User ID is required",
+        message: "Authentication required",
       });
     }
 
@@ -71,7 +73,7 @@ exports.uploadResume = async (req, res) => {
     // Create a new resume
     const newResume = new Resume({
       userId,
-      title: title || originalFilename.replace(/\.[^/.]+$/, ""),
+      name: title || originalFilename.replace(/\.[^/.]+$/, ""),
       originalFilename,
       storedFilename,
       filePath,
@@ -112,12 +114,13 @@ exports.uploadResume = async (req, res) => {
 // Get all resumes for a user
 exports.getUserResumes = async (req, res) => {
   try {
-    const { userId } = req.query;
+    // Get userId from authenticated user (set by verifyToken middleware)
+    const userId = req.user._id;
 
     if (!userId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "User ID is required",
+        message: "Authentication required",
       });
     }
 
@@ -188,7 +191,7 @@ exports.updateResumeTitle = async (req, res) => {
       });
     }
 
-    resume.title = title;
+    resume.name = title;
     await resume.save();
 
     res.status(200).json({
@@ -348,6 +351,182 @@ exports.analyzeResume = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to analyze resume",
+      error: error.message,
+    });
+  }
+};
+
+// Extract job position from resume
+exports.extractJobPosition = async (req, res) => {
+  try {
+    const { resumeId } = req.body;
+
+    if (!resumeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Resume ID is required",
+      });
+    }
+
+    const resume = await Resume.findById(resumeId);
+
+    if (!resume) {
+      return res.status(404).json({
+        success: false,
+        message: "Resume not found",
+      });
+    }
+
+    // Use the analyzeResume function from openaiService to extract job position
+    const { analyzeResume } = require("../utils/openaiService");
+
+    try {
+      // If resume already has analysis with suggested positions, use that
+      if (
+        resume.analysis &&
+        resume.analysis.suggestedPositions &&
+        resume.analysis.suggestedPositions.length > 0
+      ) {
+        return res.status(200).json({
+          success: true,
+          suggestedPosition: resume.analysis.suggestedPositions[0],
+          allSuggestions: resume.analysis.suggestedPositions,
+        });
+      }
+
+      // Otherwise, analyze the resume content to extract job position
+      const analysis = await analyzeResume(resume.content, "general");
+
+      // Extract the most suitable job position from the analysis
+      let suggestedPosition = "Software Engineer"; // Default fallback
+
+      if (
+        analysis.personalized_questions &&
+        analysis.personalized_questions.length > 0
+      ) {
+        // Try to extract position from the analysis
+        const content = resume.content.toLowerCase();
+
+        // Common job titles to look for in resume content
+        const jobTitles = [
+          "software engineer",
+          "software developer",
+          "full stack developer",
+          "frontend developer",
+          "backend developer",
+          "web developer",
+          "data scientist",
+          "data analyst",
+          "machine learning engineer",
+          "product manager",
+          "project manager",
+          "scrum master",
+          "devops engineer",
+          "cloud engineer",
+          "system administrator",
+          "ui/ux designer",
+          "ux designer",
+          "ui designer",
+          "graphic designer",
+          "qa engineer",
+          "test engineer",
+          "quality assurance",
+          "business analyst",
+          "systems analyst",
+          "technical analyst",
+          "mobile developer",
+          "ios developer",
+          "android developer",
+          "database administrator",
+          "network engineer",
+          "security engineer",
+        ];
+
+        // Find the first matching job title in the resume content
+        for (const title of jobTitles) {
+          if (content.includes(title)) {
+            suggestedPosition = title
+              .split(" ")
+              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(" ");
+            break;
+          }
+        }
+      }
+
+      // Update resume with the analysis if it doesn't exist
+      if (!resume.analysis) {
+        resume.analysis = {
+          suggestedPositions: [suggestedPosition],
+          summary:
+            analysis.analysis || "Position extracted from resume content",
+        };
+        resume.lastAnalyzedAt = new Date();
+        await resume.save();
+      }
+
+      res.status(200).json({
+        success: true,
+        suggestedPosition,
+        analysis: analysis.analysis,
+      });
+    } catch (analysisError) {
+      console.error("Error in AI analysis, using fallback:", analysisError);
+
+      // Fallback: Simple keyword-based extraction
+      const content = resume.content.toLowerCase();
+      let suggestedPosition = "Software Engineer"; // Default
+
+      // Simple keyword matching
+      if (
+        content.includes("data scientist") ||
+        content.includes("machine learning")
+      ) {
+        suggestedPosition = "Data Scientist";
+      } else if (content.includes("product manager")) {
+        suggestedPosition = "Product Manager";
+      } else if (
+        content.includes("frontend") ||
+        content.includes("react") ||
+        content.includes("vue")
+      ) {
+        suggestedPosition = "Frontend Developer";
+      } else if (
+        content.includes("backend") ||
+        content.includes("api") ||
+        content.includes("server")
+      ) {
+        suggestedPosition = "Backend Developer";
+      } else if (
+        content.includes("full stack") ||
+        content.includes("fullstack")
+      ) {
+        suggestedPosition = "Full Stack Developer";
+      } else if (
+        content.includes("devops") ||
+        content.includes("aws") ||
+        content.includes("cloud")
+      ) {
+        suggestedPosition = "DevOps Engineer";
+      } else if (
+        content.includes("designer") ||
+        content.includes("ui") ||
+        content.includes("ux")
+      ) {
+        suggestedPosition = "UI/UX Designer";
+      }
+
+      res.status(200).json({
+        success: true,
+        suggestedPosition,
+        analysis: "Position extracted using keyword matching",
+      });
+    }
+  } catch (error) {
+    console.error("Error extracting job position:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to extract job position from resume",
       error: error.message,
     });
   }

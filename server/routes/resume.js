@@ -113,8 +113,8 @@ const handleUploadError = (error, req, res, next) => {
   next(error);
 };
 
-// Middleware to validate user for protected routes
-const validateUser = (req, res, next) => {
+// Middleware to validate user for protected routes that need userId in query/body
+const validateUserId = (req, res, next) => {
   const { userId } = req.query || req.body;
 
   if (!userId) {
@@ -135,12 +135,12 @@ router.post(
   "/upload",
   upload.single("resume"),
   handleUploadError,
-  validateUser,
+  verifyToken,
   resumeController.uploadResume
 );
 
 // Get all resumes for a user
-router.get("/", validateUser, resumeController.getUserResumes);
+router.get("/", verifyToken, resumeController.getUserResumes);
 
 // Get a specific resume by ID
 router.get("/:resumeId", resumeController.getResumeById);
@@ -155,7 +155,14 @@ router.delete("/:resumeId", resumeController.deleteResume);
 router.put("/:resumeId/default", resumeController.setDefaultResume);
 
 // Analyze a resume
-router.post("/analyze", validateUser, resumeController.analyzeResume);
+router.post("/analyze", verifyToken, resumeController.analyzeResume);
+
+// Extract job position from resume
+router.post(
+  "/extract-position",
+  verifyToken,
+  resumeController.extractJobPosition
+);
 
 // Health check for resume service
 router.get("/health", (req, res) => {
