@@ -49,7 +49,13 @@ const PrivateRoute = ({ children, requireAuth = true }) => {
   }
 
   // For routes that should redirect authenticated users away (like login/register)
-  if (!requireAuth && isAuthenticated() && !isPublicRoute) {
+  // BUT NOT interview session routes, which should be accessible to everyone
+  if (
+    !requireAuth &&
+    isAuthenticated() &&
+    !isPublicRoute &&
+    !isInterviewSessionRoute
+  ) {
     const redirectTo =
       new URLSearchParams(location.search).get("redirect") || "/dashboard";
     return <Navigate to={redirectTo} replace />;
