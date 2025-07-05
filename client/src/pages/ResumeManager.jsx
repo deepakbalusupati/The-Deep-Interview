@@ -25,7 +25,7 @@ const ResumeManager = () => {
         setLoading(true);
         // Only attempt to fetch if user is logged in
         if (currentUser && currentUser._id) {
-          const res = await api.get(`/api/resume?userId=${currentUser._id}`);
+          const res = await api.get('/api/resume');
           
           if (res.data.success) {
             setResumes(res.data.resumes);
@@ -109,7 +109,6 @@ const ResumeManager = () => {
       const formData = new FormData();
       formData.append('resume', selectedFile);
       formData.append('title', resumeTitle);
-      formData.append('userId', currentUser._id);
       
       const res = await api.post('/api/resume/upload', formData, {
         headers: {
@@ -166,9 +165,9 @@ const ResumeManager = () => {
     const resume = resumes.find(r => r._id === resumeId);
     if (!resume) return;
     
-    const newTitle = window.prompt('Enter a new title for your resume', resume.title);
+    const newTitle = window.prompt('Enter a new title for your resume', resume.name || resume.title);
     
-    if (newTitle && newTitle.trim() !== '' && newTitle !== resume.title) {
+    if (newTitle && newTitle.trim() !== '' && newTitle !== (resume.name || resume.title)) {
       try {
         setLoading(true);
         
@@ -177,7 +176,7 @@ const ResumeManager = () => {
         });
         
         if (res.data.success) {
-          setResumes(resumes.map(r => r._id === resumeId ? { ...r, title: newTitle } : r));
+          setResumes(resumes.map(r => r._id === resumeId ? { ...r, name: newTitle, title: newTitle } : r));
           setMessage('Resume title updated successfully');
         }
       } catch (err) {
@@ -352,7 +351,7 @@ const ResumeManager = () => {
                       </div>
                       <div>
                         <h3 className="font-medium text-gray-900">
-                          {resume.title || resume.name}
+                          {resume.name || resume.title}
                           {resume.isDefault && (
                             <span className="ml-2 text-xs bg-primary-100 text-primary-800 px-2 py-0.5 rounded-full">
                               Default

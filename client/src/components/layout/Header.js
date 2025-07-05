@@ -1,28 +1,13 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import {
-  Menu,
-  X,
-  ChevronDown,
-  User,
-  FileText,
-  Terminal,
-  LogOut,
-} from "react-feather";
+import { Menu, X, ChevronDown, User, FileText, LogOut } from "react-feather";
 import logo from "../../assets/images/logo.svg";
 
-// Add a debug mode toggle in the user dropdown menu
-const UserDropdown = ({ currentUser, logout, debugMode, toggleDebugMode }) => {
+const UserDropdown = ({ currentUser, logout }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const toggleDropdown = () => setIsOpen(!isOpen);
-
-  const handleDebugToggle = (e) => {
-    e.preventDefault();
-    const isEnabled = toggleDebugMode();
-    alert(`Debug mode ${isEnabled ? "enabled" : "disabled"}`);
-  };
 
   return (
     <div className="relative">
@@ -58,13 +43,6 @@ const UserDropdown = ({ currentUser, logout, debugMode, toggleDebugMode }) => {
           <div className="border-t border-gray-100 my-1"></div>
           <button
             className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-            onClick={handleDebugToggle}
-          >
-            <Terminal size={14} className="inline mr-2" />
-            {debugMode ? "Disable Debug Mode" : "Enable Debug Mode"}
-          </button>
-          <button
-            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
             onClick={() => {
               logout();
               setIsOpen(false);
@@ -81,7 +59,7 @@ const UserDropdown = ({ currentUser, logout, debugMode, toggleDebugMode }) => {
 
 function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { currentUser, logout, debugMode, toggleDebugMode } = useAuth();
+  const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -151,12 +129,7 @@ function Header() {
                 </Link>
 
                 {/* Profile dropdown */}
-                <UserDropdown
-                  currentUser={currentUser}
-                  logout={logout}
-                  debugMode={debugMode}
-                  toggleDebugMode={toggleDebugMode}
-                />
+                <UserDropdown currentUser={currentUser} logout={logout} />
               </>
             ) : (
               <div className="hidden md:flex items-center space-x-2">
@@ -231,17 +204,6 @@ function Header() {
                   >
                     Profile
                   </Link>
-                  <button
-                    className="text-left text-gray-700 hover:text-primary-600 py-2 transition-colors duration-200"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const isEnabled = toggleDebugMode();
-                      alert(`Debug mode ${isEnabled ? "enabled" : "disabled"}`);
-                      toggleMenu();
-                    }}
-                  >
-                    {debugMode ? "Disable Debug Mode" : "Enable Debug Mode"}
-                  </button>
                   <button
                     className="text-left text-gray-700 hover:text-primary-600 py-2 transition-colors duration-200"
                     onClick={() => {
