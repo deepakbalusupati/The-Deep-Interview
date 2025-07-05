@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import api from "../utils/api";
 import { v4 as uuidv4 } from "uuid";
 
@@ -15,28 +15,65 @@ export function AuthProvider({ children }) {
   const [serverAvailable, setServerAvailable] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in from localStorage
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setCurrentUser(JSON.parse(storedUser));
-    }
+    const initializeAuth = async () => {
+      try {
+        // Check if user is logged in from localStorage
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
 
-    // Check if debug mode is enabled
-    const isDebugMode = localStorage.getItem("debugMode") === "true";
-    setDebugMode(isDebugMode);
+          // Validate stored user data
+          if (userData && userData.token && userData._id) {
+            // Verify token is still valid by making a test request
+            try {
+              const response = await api.get(
+                `/api/user/profile?userId=${userData._id}`
+              );
+              if (response.data.success) {
+                setCurrentUser(userData);
+              } else {
+                // Token is invalid, clear stored data
+                console.warn("Stored token is invalid, clearing user data");
+                api.clearUserData();
+              }
+            } catch (error) {
+              // Token verification failed, clear stored data
+              console.warn(
+                "Token verification failed, clearing user data:",
+                error.message
+              );
+              api.clearUserData();
+            }
+          } else {
+            // Invalid user data structure, clear it
+            console.warn("Invalid user data structure, clearing storage");
+            api.clearUserData();
+          }
+        }
 
-    // Check server availability
-    checkServerHealth();
+        // Check if debug mode is enabled
+        const isDebugMode = localStorage.getItem("debugMode") === "true";
+        setDebugMode(isDebugMode);
 
-    setLoading(false);
+        // Check server availability
+        await checkServerHealth();
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
   }, []);
 
   // Check if the server is available
   const checkServerHealth = async () => {
     try {
-      const response = await api.get("/api/health", { timeout: 3000 });
-      setServerAvailable(response.data.status === "ok");
-      return response.data.status === "ok";
+      const response = await api.get("/api/health", { timeout: 5000 });
+      const isAvailable = response.data.status === "ok";
+      setServerAvailable(isAvailable);
+      return isAvailable;
     } catch (error) {
       console.error("Server health check failed:", error);
       setServerAvailable(false);
@@ -54,257 +91,264 @@ export function AuthProvider({ children }) {
 
   // Register a new user
   const register = async (name, email, password) => {
-    // Check server availability first
-    const isServerAvailable = await checkServerHealth();
+    try {
+      // Check server availability first
+      const isServerAvailable = await checkServerHealth();
 
-    if (isServerAvailable) {
-      try {
-        const response = await api.post("/api/user/register", {
-          name,
-          email,
-          password,
-        });
+      if (isServerAvailable) {
+        try {
+          const response = await api.post("/api/user/register", {
+            name: name.trim(),
+            email: email.trim(),
+            password,
+          });
 
-        const user = response.data.user;
-        setCurrentUser(user);
-        localStorage.setItem("user", JSON.stringify(user));
-        return { success: true, user };
-      } catch (error) {
+          if (response.data.success) {
+            const { user, token } = response.data;
+            const userWithToken = { ...user, token };
+
+            setCurrentUser(userWithToken);
+            localStorage.setItem("user", JSON.stringify(userWithToken));
+
+            return {
+              success: true,
+              user: userWithToken,
+              message: response.data.message || "Registration successful",
+            };
+          } else {
+            return {
+              success: false,
+              message: response.data.message || "Registration failed",
+              errors: response.data.errors,
+            };
+          }
+        } catch (error) {
+          console.error("Registration error:", error);
+
+          let errorMessage = "Registration failed";
+          let errors = {};
+
+          if (error.response?.data) {
+            errorMessage = error.response.data.message || errorMessage;
+            errors = error.response.data.errors || {};
+          } else {
+            errorMessage = api.handleError(error);
+          }
+
+          return {
+            success: false,
+            message: errorMessage,
+            errors,
+          };
+        }
+      } else {
+        // Create a mock user in offline mode
+        const mockUser = {
+          _id: uuidv4(),
+          name: name.trim(),
+          email: email.trim(),
+          role: "user",
+          professionalDetails: {
+            currentPosition: "",
+            yearsOfExperience: 0,
+            industry: "",
+            skills: [],
+          },
+          preferences: {
+            defaultInterviewType: "mixed",
+            defaultSkillLevel: "intermediate",
+            notificationsEnabled: true,
+          },
+          createdAt: new Date().toISOString(),
+          lastActive: new Date().toISOString(),
+          isOfflineUser: true,
+          token: `offline-token-${uuidv4()}`, // Generate a fake token for offline mode
+        };
+
+        setCurrentUser(mockUser);
+        localStorage.setItem("user", JSON.stringify(mockUser));
+
         return {
-          success: false,
-          message: error.response?.data?.message || "Registration failed",
+          success: true,
+          user: mockUser,
+          message:
+            "Created offline account. Some features may be limited until you connect to the server.",
         };
       }
-    } else {
-      // Create a mock user in offline mode
-      const mockUser = {
-        _id: uuidv4(),
-        name,
-        email,
-        role: "user",
-        professionalDetails: {
-          currentPosition: "",
-          yearsOfExperience: 0,
-          industry: "",
-          skills: [],
-        },
-        preferences: {
-          defaultInterviewType: "mixed",
-          defaultSkillLevel: "intermediate",
-          notificationsEnabled: true,
-        },
-        createdAt: new Date().toISOString(),
-        lastActive: new Date().toISOString(),
-        isOfflineUser: true,
-      };
-
-      setCurrentUser(mockUser);
-      localStorage.setItem("user", JSON.stringify(mockUser));
+    } catch (error) {
+      console.error("Unexpected registration error:", error);
       return {
-        success: true,
-        user: mockUser,
-        message:
-          "Created offline account. Some features may be limited until you connect to the server.",
+        success: false,
+        message: "An unexpected error occurred during registration",
       };
     }
   };
 
-  // Login user
+  // Login a user
   const login = async (email, password) => {
-    // Check server availability first
-    const isServerAvailable = await checkServerHealth();
+    try {
+      // Check server availability first
+      const isServerAvailable = await checkServerHealth();
 
-    if (isServerAvailable) {
-      try {
-        const response = await api.post("/api/user/login", {
-          email,
-          password,
-        });
+      if (isServerAvailable) {
+        try {
+          const response = await api.post("/api/user/login", {
+            email: email.trim(),
+            password,
+          });
 
-        const user = response.data.user;
-        setCurrentUser(user);
-        localStorage.setItem("user", JSON.stringify(user));
-        return { success: true, user };
-      } catch (error) {
-        return {
-          success: false,
-          message: error.response?.data?.message || "Login failed",
-        };
-      }
-    } else {
-      // Try to find user in localStorage for offline login
-      try {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          if (user.email === email) {
-            // In a real app, we would verify the password hash
-            // But for offline mode, we'll just check if it's the same user
-            setCurrentUser(user);
+          if (response.data.success) {
+            const { user, token } = response.data;
+            const userWithToken = { ...user, token };
+
+            setCurrentUser(userWithToken);
+            localStorage.setItem("user", JSON.stringify(userWithToken));
+
             return {
               success: true,
-              user,
-              message: "Logged in offline mode. Some features may be limited.",
+              user: userWithToken,
+              message: response.data.message || "Login successful",
+            };
+          } else {
+            return {
+              success: false,
+              message: response.data.message || "Login failed",
+              errors: response.data.errors,
             };
           }
-        }
-      } catch (err) {
-        console.error("Error checking local user:", err);
-      }
+        } catch (error) {
+          console.error("Login error:", error);
 
+          let errorMessage = "Login failed";
+          let errors = {};
+
+          if (error.response?.data) {
+            errorMessage = error.response.data.message || errorMessage;
+            errors = error.response.data.errors || {};
+          } else {
+            errorMessage = api.handleError(error);
+          }
+
+          return {
+            success: false,
+            message: errorMessage,
+            errors,
+          };
+        }
+      } else {
+        // In offline mode, try to find a stored user with matching email
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser);
+            if (userData.email === email.trim() && userData.isOfflineUser) {
+              setCurrentUser(userData);
+              return {
+                success: true,
+                user: userData,
+                message:
+                  "Logged in offline mode. Some features may be limited.",
+              };
+            }
+          } catch (error) {
+            console.error("Error parsing stored user data:", error);
+          }
+        }
+
+        return {
+          success: false,
+          message: "Server unavailable. Cannot authenticate user.",
+        };
+      }
+    } catch (error) {
+      console.error("Unexpected login error:", error);
       return {
         success: false,
-        message: "Server is unavailable and no matching local account found.",
+        message: "An unexpected error occurred during login",
       };
     }
   };
 
   // Logout user
   const logout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem("user");
-  };
+    try {
+      setCurrentUser(null);
+      api.clearUserData();
 
-  // Update user information
-  const updateUser = (userData) => {
-    setCurrentUser(userData);
-    localStorage.setItem("user", JSON.stringify(userData));
-  };
+      // Clear any interview session data
+      localStorage.removeItem("lastInterviewSession");
 
-  // Update user profile
-  const updateProfile = async (userId, profileData) => {
-    // Check server availability first
-    const isServerAvailable = await checkServerHealth();
-
-    if (isServerAvailable) {
-      try {
-        const response = await api.patch(
-          `/api/user/profile?userId=${userId}`,
-          profileData
-        );
-
-        const updatedUser = response.data.user;
-        setCurrentUser(updatedUser);
-        localStorage.setItem("user", JSON.stringify(updatedUser));
-        return { success: true, user: updatedUser };
-      } catch (error) {
-        return {
-          success: false,
-          message: error.response?.data?.message || "Profile update failed",
-        };
-      }
-    } else {
-      // Update profile locally in offline mode
-      try {
-        const currentUserData = { ...currentUser };
-
-        // Update basic fields
-        if (profileData.name) currentUserData.name = profileData.name;
-
-        // Update professional details
-        if (profileData.currentPosition)
-          currentUserData.professionalDetails.currentPosition =
-            profileData.currentPosition;
-        if (profileData.yearsOfExperience)
-          currentUserData.professionalDetails.yearsOfExperience =
-            profileData.yearsOfExperience;
-        if (profileData.industry)
-          currentUserData.professionalDetails.industry = profileData.industry;
-        if (profileData.skills)
-          currentUserData.professionalDetails.skills = profileData.skills;
-
-        currentUserData.lastActive = new Date().toISOString();
-
-        setCurrentUser(currentUserData);
-        localStorage.setItem("user", JSON.stringify(currentUserData));
-
-        return {
-          success: true,
-          user: currentUserData,
-          message:
-            "Profile updated in offline mode. Changes will sync when connected.",
-        };
-      } catch (error) {
-        return {
-          success: false,
-          message: "Failed to update profile in offline mode",
-        };
-      }
+      return { success: true, message: "Logged out successfully" };
+    } catch (error) {
+      console.error("Logout error:", error);
+      return { success: false, message: "Error during logout" };
     }
   };
 
-  // Update user preferences
-  const updatePreferences = async (userId, preferencesData) => {
-    // Check server availability first
-    const isServerAvailable = await checkServerHealth();
+  // Update current user data
+  const updateUser = (userData) => {
+    try {
+      const updatedUser = { ...currentUser, ...userData };
+      setCurrentUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      return { success: true, user: updatedUser };
+    } catch (error) {
+      console.error("Error updating user:", error);
+      return { success: false, message: "Failed to update user data" };
+    }
+  };
 
-    if (isServerAvailable) {
-      try {
-        const response = await api.patch(
-          `/api/user/preferences?userId=${userId}`,
-          preferencesData
-        );
+  // Check if user is authenticated
+  const isAuthenticated = () => {
+    return currentUser && currentUser._id && currentUser.token;
+  };
 
-        const updatedUser = response.data.user;
+  // Get user token
+  const getToken = () => {
+    return currentUser?.token || null;
+  };
+
+  // Refresh user data from server
+  const refreshUser = async () => {
+    if (!currentUser?._id)
+      return { success: false, message: "No user logged in" };
+
+    try {
+      const response = await api.get(
+        `/api/user/profile?userId=${currentUser._id}`
+      );
+      if (response.data.success) {
+        const updatedUser = { ...response.data.user, token: currentUser.token };
         setCurrentUser(updatedUser);
         localStorage.setItem("user", JSON.stringify(updatedUser));
         return { success: true, user: updatedUser };
-      } catch (error) {
-        return {
-          success: false,
-          message: error.response?.data?.message || "Preferences update failed",
-        };
       }
-    } else {
-      // Update preferences locally in offline mode
-      try {
-        const currentUserData = { ...currentUser };
-
-        // Update preferences
-        if (preferencesData.defaultInterviewType)
-          currentUserData.preferences.defaultInterviewType =
-            preferencesData.defaultInterviewType;
-        if (preferencesData.defaultSkillLevel)
-          currentUserData.preferences.defaultSkillLevel =
-            preferencesData.defaultSkillLevel;
-        if (preferencesData.notificationsEnabled !== undefined)
-          currentUserData.preferences.notificationsEnabled =
-            preferencesData.notificationsEnabled;
-
-        currentUserData.lastActive = new Date().toISOString();
-
-        setCurrentUser(currentUserData);
-        localStorage.setItem("user", JSON.stringify(currentUserData));
-
-        return {
-          success: true,
-          user: currentUserData,
-          message:
-            "Preferences updated in offline mode. Changes will sync when connected.",
-        };
-      } catch (error) {
-        return {
-          success: false,
-          message: "Failed to update preferences in offline mode",
-        };
-      }
+      return { success: false, message: "Failed to refresh user data" };
+    } catch (error) {
+      console.error("Error refreshing user:", error);
+      return { success: false, message: api.handleError(error) };
     }
   };
 
   const value = {
     currentUser,
     loading,
-    debugMode,
     serverAvailable,
-    toggleDebugMode,
+    debugMode,
     register,
     login,
     logout,
     updateUser,
-    updateProfile,
-    updatePreferences,
+    isAuthenticated,
+    getToken,
+    refreshUser,
     checkServerHealth,
+    toggleDebugMode,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {!loading && children}
+    </AuthContext.Provider>
+  );
 }
