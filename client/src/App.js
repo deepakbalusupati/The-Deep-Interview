@@ -15,6 +15,7 @@ import ResumeManager from "./pages/ResumeManager";
 import PrivateRoute from "./components/common/PrivateRoute";
 import NotFound from "./pages/NotFound";
 import LogoSpinner from "./components/common/LogoSpinner";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -45,95 +46,97 @@ function App() {
   }
 
   return (
-    <AuthProvider>
-      <div className="flex flex-col min-h-screen bg-gray-50">
-        <Header />
-        <main className="flex-grow animate-fade-in">
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<Home />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <div className="flex flex-col min-h-screen bg-gray-50">
+          <Header />
+          <main className="flex-grow animate-fade-in">
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<Home />} />
 
-            {/* Auth routes - redirect if already logged in */}
-            <Route
-              path="/login"
-              element={
-                <PrivateRoute requireAuth={false}>
-                  <Login />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/register"
-              element={
-                <PrivateRoute requireAuth={false}>
-                  <Register />
-                </PrivateRoute>
-              }
-            />
+              {/* Auth routes - redirect if already logged in */}
+              <Route
+                path="/login"
+                element={
+                  <PrivateRoute requireAuth={false}>
+                    <Login />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <PrivateRoute requireAuth={false}>
+                    <Register />
+                  </PrivateRoute>
+                }
+              />
 
-            {/* Protected routes */}
-            <Route
-              path="/dashboard"
-              element={
-                <PrivateRoute>
-                  <Dashboard />
-                </PrivateRoute>
-              }
-            />
+              {/* Protected routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <PrivateRoute>
+                    <Dashboard />
+                  </PrivateRoute>
+                }
+              />
 
-            <Route
-              path="/interview/setup"
-              element={
-                <PrivateRoute>
-                  <InterviewSetup />
-                </PrivateRoute>
-              }
-            />
+              <Route
+                path="/interview/setup"
+                element={
+                  <PrivateRoute>
+                    <InterviewSetup />
+                  </PrivateRoute>
+                }
+              />
 
-            {/* Interview session allows offline access */}
-            <Route
-              path="/interview/session/:sessionId"
-              element={
-                <PrivateRoute requireAuth={false}>
-                  <InterviewSession />
-                </PrivateRoute>
-              }
-            />
+              {/* Interview session allows offline access */}
+              <Route
+                path="/interview/session/:sessionId"
+                element={
+                  <PrivateRoute requireAuth={false}>
+                    <InterviewSession />
+                  </PrivateRoute>
+                }
+              />
 
-            <Route
-              path="/interview/results/:sessionId"
-              element={
-                <PrivateRoute>
-                  <InterviewResults />
-                </PrivateRoute>
-              }
-            />
+              <Route
+                path="/interview/results/:sessionId"
+                element={
+                  <PrivateRoute>
+                    <InterviewResults />
+                  </PrivateRoute>
+                }
+              />
 
-            <Route
-              path="/profile"
-              element={
-                <PrivateRoute>
-                  <Profile />
-                </PrivateRoute>
-              }
-            />
+              <Route
+                path="/profile"
+                element={
+                  <PrivateRoute>
+                    <Profile />
+                  </PrivateRoute>
+                }
+              />
 
-            <Route
-              path="/resume"
-              element={
-                <PrivateRoute>
-                  <ResumeManager />
-                </PrivateRoute>
-              }
-            />
+              <Route
+                path="/resume"
+                element={
+                  <PrivateRoute>
+                    <ResumeManager />
+                  </PrivateRoute>
+                }
+              />
 
-            {/* 404 route */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
-    </AuthProvider>
+              {/* 404 route */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

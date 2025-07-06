@@ -1,78 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { BarChart2, Calendar, Clock, FileText, PlusCircle, User } from 'react-feather';
-import api from '../utils/api';
+import { useUserData } from '../hooks/useApiCache';
 
 function Dashboard() {
   const { currentUser } = useAuth();
-  const [interviewHistory, setInterviewHistory] = useState([]);
-  const [stats, setStats] = useState({
-    totalInterviews: 0,
-    totalQuestions: 0,
-    averageScore: 0,
-    averageDurationMinutes: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  
+  // Use the custom hook to fetch user data with caching
+  const { 
+    history: { data: interviewHistory },
+    statistics: { data: stats },
+    loading,
+    error,
+    refetch
+  } = useUserData(currentUser?._id, !!currentUser?._id);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        
-        if (!currentUser?._id) {
-          setLoading(false);
-          return;
-        }
-        
-        // Fetch interview history
-        const historyResponse = await api.get(`/api/user/history?userId=${currentUser._id}`);
-        
-        if (historyResponse.data && historyResponse.data.success) {
-          setInterviewHistory(historyResponse.data.interviewSessions?.slice(0, 5) || []); // Get latest 5 sessions
-        } else {
-          console.warn('Invalid history response format:', historyResponse.data);
-          setInterviewHistory([]);
-        }
-        
-        // Fetch user statistics
-        const statsResponse = await api.get(`/api/user/statistics?userId=${currentUser._id}`);
-        
-        if (statsResponse.data && statsResponse.data.success) {
-          setStats(statsResponse.data.statistics || {
-            totalInterviews: 0,
-            totalQuestions: 0,
-            averageScore: 0,
-            averageDurationMinutes: 0,
-          });
-        } else {
-          console.warn('Invalid statistics response format:', statsResponse.data);
-          setStats({
-            totalInterviews: 0,
-            totalQuestions: 0,
-            averageScore: 0,
-            averageDurationMinutes: 0,
-          });
-        }
-        
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-        api.handleError(err, setError);
-        setLoading(false);
-      }
-    };
-
-    if (currentUser?._id) {
-      fetchDashboardData();
-    } else {
-      setLoading(false);
-    }
-  }, [currentUser, retryCount]);
+  // Get latest 5 interview sessions
+  const recentInterviews = interviewHistory?.slice(0, 5) || [];
 
   // Format date
   const formatDate = (dateString) => {
@@ -82,6 +28,7 @@ function Dashboard() {
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
+    refetch();
   };
 
   return (
@@ -173,7 +120,7 @@ function Dashboard() {
           <div className="bg-white rounded-lg shadow-md p-6 mb-8">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Interviews</h2>
             
-            {interviewHistory.length === 0 ? (
+            {recentInterviews.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-600 mb-4">You haven't completed any interviews yet.</p>
                 <Link to="/interview/setup" className="btn btn-primary">
@@ -206,7 +153,7 @@ function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {interviewHistory.map((interview) => (
+                    {recentInterviews.map((interview) => (
                       <tr key={interview._id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {formatDate(interview.startTime)}
@@ -257,7 +204,7 @@ function Dashboard() {
               </div>
             )}
             
-            {interviewHistory.length > 0 && (
+            {recentInterviews.length > 0 && (
               <div className="mt-4 text-right">
                 <Link to="/dashboard/history" className="text-primary-600 hover:text-primary-800 text-sm font-medium">
                   View All Interviews
