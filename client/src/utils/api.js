@@ -1,4 +1,105 @@
 import axios from "axios";
+import performanceMonitor from "./performanceMonitor";
+
+// Request deduplication cache
+const requestCache = new Map();
+const dataCache = new Map();
+
+// Cache configuration
+const CACHE_CONFIG = {
+  // Cache durations in milliseconds
+  USER_PROFILE: 5 * 60 * 1000, // 5 minutes
+  USER_HISTORY: 2 * 60 * 1000, // 2 minutes
+  USER_STATISTICS: 2 * 60 * 1000, // 2 minutes
+  RESUMES: 5 * 60 * 1000, // 5 minutes
+  POSITIONS: 10 * 60 * 1000, // 10 minutes
+  HEALTH: 30 * 1000, // 30 seconds
+  DEFAULT: 1 * 60 * 1000, // 1 minute
+};
+
+// Function to generate cache key
+const generateCacheKey = (method, url, params = {}) => {
+  const sortedParams = Object.keys(params)
+    .sort()
+    .reduce((result, key) => {
+      result[key] = params[key];
+      return result;
+    }, {});
+
+  return `${method.toUpperCase()}:${url}:${JSON.stringify(sortedParams)}`;
+};
+
+// Function to get cache duration based on endpoint
+const getCacheDuration = (url) => {
+  if (url.includes("/user/profile")) return CACHE_CONFIG.USER_PROFILE;
+  if (url.includes("/user/history")) return CACHE_CONFIG.USER_HISTORY;
+  if (url.includes("/user/statistics")) return CACHE_CONFIG.USER_STATISTICS;
+  if (url.includes("/resume")) return CACHE_CONFIG.RESUMES;
+  if (url.includes("/interview/positions")) return CACHE_CONFIG.POSITIONS;
+  if (url.includes("/health")) return CACHE_CONFIG.HEALTH;
+  return CACHE_CONFIG.DEFAULT;
+};
+
+// Function to deduplicate requests
+const deduplicateRequest = (key, requestFn, cacheDuration = 0) => {
+  // Check if request is already in progress
+  if (requestCache.has(key)) {
+    if (process.env.NODE_ENV === "development") {
+      console.log(`🔄 Deduplicating request: ${key}`);
+    }
+    return requestCache.get(key);
+  }
+
+  // Check data cache for GET requests
+  if (cacheDuration > 0) {
+    const cachedData = dataCache.get(key);
+    if (cachedData && Date.now() - cachedData.timestamp < cacheDuration) {
+      if (process.env.NODE_ENV === "development") {
+        console.log(`📦 Using cached data: ${key}`);
+      }
+      return Promise.resolve(cachedData.data);
+    }
+  }
+
+  // Make the request
+  const promise = requestFn()
+    .then((response) => {
+      // Cache successful responses for GET requests
+      if (cacheDuration > 0) {
+        dataCache.set(key, {
+          data: response,
+          timestamp: Date.now(),
+        });
+      }
+      return response;
+    })
+    .finally(() => {
+      // Remove from request cache after completion
+      setTimeout(() => {
+        requestCache.delete(key);
+      }, 100);
+    });
+
+  // Store the promise in request cache
+  requestCache.set(key, promise);
+  return promise;
+};
+
+// Function to clear cache
+const clearCache = (pattern = null) => {
+  if (pattern) {
+    // Clear specific cache entries matching pattern
+    for (const [key] of dataCache.entries()) {
+      if (key.includes(pattern)) {
+        dataCache.delete(key);
+      }
+    }
+  } else {
+    // Clear all cache
+    dataCache.clear();
+  }
+  requestCache.clear();
+};
 
 // Function to get the base URL based on environment
 const getBaseUrl = () => {
@@ -45,8 +146,11 @@ api.interceptors.request.use(
       }
     }
 
-    // Add request timestamp for debugging
-    config.metadata = { startTime: new Date() };
+    // Add request timestamp for debugging and performance monitoring
+    config.metadata = {
+      startTime: new Date(),
+      trackingKey: performanceMonitor.trackApiCall(config.method, config.url),
+    };
 
     return config;
   },
@@ -59,7 +163,7 @@ api.interceptors.request.use(
 // Add a response interceptor to handle common errors and logging
 api.interceptors.response.use(
   (response) => {
-    // Calculate request duration for debugging
+    // Calculate request duration for debugging and performance monitoring
     if (response.config.metadata) {
       const duration = new Date() - response.config.metadata.startTime;
       console.log(
@@ -67,12 +171,20 @@ api.interceptors.response.use(
           response.config.url
         } - ${response.status} (${duration}ms)`
       );
+
+      // Complete performance tracking
+      if (response.config.metadata.trackingKey) {
+        performanceMonitor.completeApiCall(
+          response.config.metadata.trackingKey,
+          true
+        );
+      }
     }
 
     return response;
   },
   (error) => {
-    // Calculate request duration for debugging
+    // Calculate request duration for debugging and performance monitoring
     if (error.config?.metadata) {
       const duration = new Date() - error.config.metadata.startTime;
       console.log(
@@ -80,6 +192,15 @@ api.interceptors.response.use(
           error.config.url
         } - ${error.response?.status || "Network Error"} (${duration}ms)`
       );
+
+      // Complete performance tracking for failed requests
+      if (error.config.metadata.trackingKey) {
+        performanceMonitor.completeApiCall(
+          error.config.metadata.trackingKey,
+          false,
+          error
+        );
+      }
     }
 
     // Handle specific error statuses
@@ -183,10 +304,10 @@ api.interceptors.response.use(
 );
 
 // Helper function to handle API errors in components with improved error messages
-api.handleError = (error, setErrorFn) => {
+api.handleError = (error, setErrorFn = null) => {
   let errorMessage = "An unexpected error occurred. Please try again.";
 
-  if (error.response) {
+  if (error?.response) {
     const { status, data } = error.response;
 
     // Use server-provided error message if available
@@ -232,15 +353,17 @@ api.handleError = (error, setErrorFn) => {
           }`;
       }
     }
-  } else if (error.code === "ECONNABORTED") {
+  } else if (error?.code === "ECONNABORTED") {
     errorMessage =
       "Request timed out. Please check your connection and try again.";
-  } else if (error.request) {
+  } else if (error?.request) {
     errorMessage =
       "Unable to connect to server. Please check your internet connection.";
+  } else if (error?.message) {
+    errorMessage = error.message;
   }
 
-  if (setErrorFn) {
+  if (setErrorFn && typeof setErrorFn === "function") {
     setErrorFn(errorMessage);
   }
 
@@ -321,6 +444,59 @@ api.withRetry = async (apiCall, maxRetries = 3, delay = 1000) => {
       await new Promise((resolve) => setTimeout(resolve, delay * attempt));
     }
   }
+};
+
+// Enhanced API methods with deduplication and caching
+api.getWithCache = (url, config = {}) => {
+  const cacheKey = generateCacheKey("GET", url, config.params);
+  const cacheDuration = getCacheDuration(url);
+
+  return deduplicateRequest(
+    cacheKey,
+    () => api.get(url, config),
+    cacheDuration
+  );
+};
+
+api.postWithDedup = (url, data, config = {}) => {
+  const cacheKey = generateCacheKey("POST", url, { data, ...config.params });
+
+  return deduplicateRequest(
+    cacheKey,
+    () => api.post(url, data, config),
+    0 // No caching for POST requests
+  );
+};
+
+api.putWithDedup = (url, data, config = {}) => {
+  const cacheKey = generateCacheKey("PUT", url, { data, ...config.params });
+
+  return deduplicateRequest(
+    cacheKey,
+    () => api.put(url, data, config),
+    0 // No caching for PUT requests
+  );
+};
+
+api.deleteWithDedup = (url, config = {}) => {
+  const cacheKey = generateCacheKey("DELETE", url, config.params);
+
+  return deduplicateRequest(
+    cacheKey,
+    () => api.delete(url, config),
+    0 // No caching for DELETE requests
+  );
+};
+
+// Cache management functions
+api.clearCache = clearCache;
+api.clearUserCache = () => clearCache("user");
+api.clearResumeCache = () => clearCache("resume");
+
+// Function to invalidate cache when user data changes
+api.invalidateUserCache = () => {
+  clearCache("/user/");
+  clearCache("/resume");
 };
 
 export default api;

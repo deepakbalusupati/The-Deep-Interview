@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import api from "../utils/api";
 import { v4 as uuidv4 } from "uuid";
 
@@ -26,7 +33,7 @@ export function AuthProvider({ children }) {
           if (userData && userData.token && userData._id) {
             // Verify token is still valid by making a test request
             try {
-              const response = await api.get(
+              const response = await api.getWithCache(
                 `/api/user/profile?userId=${userData._id}`
               );
               if (response.data.success) {
@@ -67,10 +74,10 @@ export function AuthProvider({ children }) {
     initializeAuth();
   }, []);
 
-  // Check if the server is available
-  const checkServerHealth = async () => {
+  // Check if the server is available (memoized to prevent unnecessary calls)
+  const checkServerHealth = useCallback(async () => {
     try {
-      const response = await api.get("/api/health", { timeout: 5000 });
+      const response = await api.getWithCache("/api/health", { timeout: 5000 });
       const isAvailable = response.data.status === "ok";
       setServerAvailable(isAvailable);
       return isAvailable;
@@ -79,7 +86,7 @@ export function AuthProvider({ children }) {
       setServerAvailable(false);
       return false;
     }
-  };
+  }, []);
 
   // Toggle debug mode
   const toggleDebugMode = () => {
@@ -308,13 +315,15 @@ export function AuthProvider({ children }) {
     return currentUser?.token || null;
   };
 
-  // Refresh user data from server
-  const refreshUser = async () => {
+  // Refresh user data from server (memoized to prevent unnecessary calls)
+  const refreshUser = useCallback(async () => {
     if (!currentUser?._id)
       return { success: false, message: "No user logged in" };
 
     try {
-      const response = await api.get(
+      // Clear cache before refreshing to get fresh data
+      api.clearUserCache();
+      const response = await api.getWithCache(
         `/api/user/profile?userId=${currentUser._id}`
       );
       if (response.data.success) {
@@ -328,23 +337,34 @@ export function AuthProvider({ children }) {
       console.error("Error refreshing user:", error);
       return { success: false, message: api.handleError(error) };
     }
-  };
+  }, [currentUser?._id, currentUser?.token]);
 
-  const value = {
-    currentUser,
-    loading,
-    serverAvailable,
-    debugMode,
-    register,
-    login,
-    logout,
-    updateUser,
-    isAuthenticated,
-    getToken,
-    refreshUser,
-    checkServerHealth,
-    toggleDebugMode,
-  };
+  // Memoize the context value to prevent unnecessary re-renders
+  const value = useMemo(
+    () => ({
+      currentUser,
+      loading,
+      serverAvailable,
+      debugMode,
+      register,
+      login,
+      logout,
+      updateUser,
+      isAuthenticated,
+      getToken,
+      refreshUser,
+      checkServerHealth,
+      toggleDebugMode,
+    }),
+    [
+      currentUser,
+      loading,
+      serverAvailable,
+      debugMode,
+      refreshUser,
+      checkServerHealth,
+    ]
+  );
 
   return (
     <AuthContext.Provider value={value}>

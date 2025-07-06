@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Briefcase, ChevronDown, Clock, FileText, Shield } from 'react-feather';
@@ -23,24 +23,27 @@ function InterviewSetup() {
   const [analyzingResume, setAnalyzingResume] = useState(false);
   const [resumesFetched, setResumesFetched] = useState(false);
 
-  useEffect(() => {
-    const checkServerHealth = async () => {
-      try {
-        const healthCheck = await api.get('/api/health', { timeout: 3000 });
-        if (healthCheck.data.status === 'ok') {
-          setServerAvailable(true);
-          setError('');
-        } else {
-          setServerAvailable(false);
-          setError('Server appears to be unavailable. You can still start an interview in offline mode.');
-        }
-      } catch (err) {
-        console.error('Health check failed:', err);
+  // Memoize server health check to prevent unnecessary calls
+  const checkServerHealth = useCallback(async () => {
+    try {
+      const healthCheck = await api.getWithCache('/api/health', { timeout: 3000 });
+      if (healthCheck.data.status === 'ok') {
+        setServerAvailable(true);
+        setError('');
+      } else {
         setServerAvailable(false);
         setError('Server appears to be unavailable. You can still start an interview in offline mode.');
       }
-    };
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Health check failed:', err);
+      }
+      setServerAvailable(false);
+      setError('Server appears to be unavailable. You can still start an interview in offline mode.');
+    }
+  }, []);
 
+  useEffect(() => {
     // Check server health immediately
     checkServerHealth();
 
@@ -48,106 +51,104 @@ function InterviewSetup() {
     const healthCheckInterval = setInterval(checkServerHealth, 10000);
 
     return () => clearInterval(healthCheckInterval);
-  }, []);
+  }, [checkServerHealth]);
+
+  // Memoize the fetch function to prevent unnecessary re-renders
+  const fetchSetupData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      const defaultPositions = [
+        'Software Engineer',
+        'Frontend Developer',
+        'Backend Developer',
+        'Full Stack Developer',
+        'Data Scientist',
+        'Product Manager',
+        'UX Designer',
+        'DevOps Engineer'
+      ];
+      
+      // Fetch popular job positions and resumes in parallel
+      const promises = [];
+      
+      if (serverAvailable) {
+        promises.push(
+          api.getWithCache('/api/interview/positions').catch(err => {
+            if (process.env.NODE_ENV === 'development') {
+              console.error('Error fetching positions:', err);
+            }
+            return { data: { positions: defaultPositions } };
+          })
+        );
+        
+        if (currentUser?._id) {
+          promises.push(
+            api.getWithCache('/api/resume').catch(err => {
+              if (process.env.NODE_ENV === 'development') {
+                console.error('Error fetching resumes:', err);
+              }
+              return { data: { success: false, resumes: [] } };
+            })
+          );
+        }
+      }
+      
+      const results = await Promise.all(promises);
+      
+      // Process positions
+      if (results[0]) {
+        setJobPositions(results[0].data.positions || defaultPositions);
+      } else {
+        setJobPositions(defaultPositions);
+      }
+      
+      // Process resumes
+      if (results[1] && results[1].data.success) {
+        setResumes(results[1].data.resumes || []);
+        
+        // Set default resume if available
+        const defaultResume = results[1].data.resumes?.find(r => r.isDefault);
+        if (defaultResume) {
+          setResumeId(defaultResume._id);
+        }
+      } else {
+        setResumes([]);
+      }
+      
+      setResumesFetched(true);
+      
+      // Set default values from user's profile/preferences
+      if (currentUser?.professionalDetails?.currentPosition) {
+        setJobPosition(currentUser.professionalDetails.currentPosition);
+      }
+      
+      if (currentUser?.preferences?.defaultInterviewType) {
+        setInterviewType(currentUser.preferences.defaultInterviewType);
+      }
+      
+      if (currentUser?.preferences?.defaultSkillLevel) {
+        setSkillLevel(currentUser.preferences.defaultSkillLevel);
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error fetching setup data:', err);
+      }
+      setLoading(false);
+    }
+  }, [currentUser?._id, currentUser?.professionalDetails?.currentPosition, currentUser?.preferences?.defaultInterviewType, currentUser?.preferences?.defaultSkillLevel, serverAvailable]);
 
   useEffect(() => {
-    const fetchSetupData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch popular job positions
-        if (serverAvailable) {
-          try {
-            const positionsResponse = await api.get('/api/interview/positions');
-            setJobPositions(positionsResponse.data.positions);
-          } catch (err) {
-            console.error('Error fetching positions:', err);
-            // Use default positions if server fails
-            setJobPositions([
-              'Software Engineer',
-              'Frontend Developer',
-              'Backend Developer',
-              'Full Stack Developer',
-              'Data Scientist',
-              'Product Manager',
-              'UX Designer',
-              'DevOps Engineer'
-            ]);
-          }
-        } else {
-          // Use default positions if server is unavailable
-          setJobPositions([
-            'Software Engineer',
-            'Frontend Developer',
-            'Backend Developer',
-            'Full Stack Developer',
-            'Data Scientist',
-            'Product Manager',
-            'UX Designer',
-            'DevOps Engineer'
-          ]);
-        }
-        
-        // Fetch user's resumes if server is available
-        if (serverAvailable && currentUser?._id) {
-          try {
-            console.log('Fetching resumes for user:', currentUser._id);
-            const resumesResponse = await api.get('/api/resume');
-            console.log('Resume response:', resumesResponse.data);
-            
-            if (resumesResponse.data.success) {
-              setResumes(resumesResponse.data.resumes || []);
-              
-              // Set default resume if available
-              const defaultResume = resumesResponse.data.resumes?.find(r => r.isDefault);
-              if (defaultResume) {
-                setResumeId(defaultResume._id);
-              }
-            } else {
-              console.log('Resume fetch not successful:', resumesResponse.data);
-              setResumes([]);
-            }
-          } catch (err) {
-            console.error('Error fetching resumes:', err);
-            setResumes([]);
-          }
-        } else {
-          console.log('Not fetching resumes - serverAvailable:', serverAvailable, 'currentUser._id:', currentUser?._id);
-          setResumes([]);
-        }
-        
-        setResumesFetched(true);
-        
-        // Set default job position from user's profile if available
-        if (currentUser?.professionalDetails?.currentPosition) {
-          setJobPosition(currentUser.professionalDetails.currentPosition);
-        }
-        
-        // Set default interview type from user's preferences if available
-        if (currentUser?.preferences?.defaultInterviewType) {
-          setInterviewType(currentUser.preferences.defaultInterviewType);
-        }
-        
-        // Set default skill level from user's preferences if available
-        if (currentUser?.preferences?.defaultSkillLevel) {
-          setSkillLevel(currentUser.preferences.defaultSkillLevel);
-        }
-        
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching setup data:', err);
-        setLoading(false);
-      }
-    };
-
     fetchSetupData();
-  }, [currentUser, serverAvailable]);
+  }, [fetchSetupData]);
 
   const handleJobPositionChange = (e) => {
     setJobPosition(e.target.value);
   };
 
-  const handleResumeChange = async (e) => {
+  const handleResumeChange = useCallback(async (e) => {
     const selectedResumeId = e.target.value;
     setResumeId(selectedResumeId);
     
@@ -164,7 +165,7 @@ function InterviewSetup() {
         }
         
         // Call backend to analyze resume and extract job position
-        const response = await api.post('/api/resume/extract-position', {
+        const response = await api.postWithDedup('/api/resume/extract-position', {
           resumeId: selectedResumeId
         });
         
@@ -173,13 +174,15 @@ function InterviewSetup() {
         }
         
       } catch (err) {
-        console.error('Error analyzing resume:', err);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error analyzing resume:', err);
+        }
         // Don't show error for resume analysis failure, just continue
       } finally {
         setAnalyzingResume(false);
       }
     }
-  };
+  }, [resumes, serverAvailable]);
 
   const handleStartInterview = async (e) => {
     e.preventDefault();
