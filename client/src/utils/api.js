@@ -1,23 +1,19 @@
 import axios from "axios";
 import performanceMonitor from "./performanceMonitor";
 
-// Request deduplication cache
 const requestCache = new Map();
 const dataCache = new Map();
 
-// Cache configuration
 const CACHE_CONFIG = {
-  // Cache durations in milliseconds
-  USER_PROFILE: 5 * 60 * 1000, // 5 minutes
-  USER_HISTORY: 2 * 60 * 1000, // 2 minutes
-  USER_STATISTICS: 2 * 60 * 1000, // 2 minutes
-  RESUMES: 5 * 60 * 1000, // 5 minutes
-  POSITIONS: 10 * 60 * 1000, // 10 minutes
-  HEALTH: 30 * 1000, // 30 seconds
-  DEFAULT: 1 * 60 * 1000, // 1 minute
+  USER_PROFILE: 5 * 60 * 1000,
+  USER_HISTORY: 2 * 60 * 1000,
+  USER_STATISTICS: 2 * 60 * 1000,
+  RESUMES: 5 * 60 * 1000,
+  POSITIONS: 10 * 60 * 1000,
+  HEALTH: 30 * 1000,
+  DEFAULT: 1 * 60 * 1000,
 };
 
-// Function to generate cache key
 const generateCacheKey = (method, url, params = {}) => {
   const sortedParams = Object.keys(params)
     .sort()
@@ -25,11 +21,9 @@ const generateCacheKey = (method, url, params = {}) => {
       result[key] = params[key];
       return result;
     }, {});
-
   return `${method.toUpperCase()}:${url}:${JSON.stringify(sortedParams)}`;
 };
 
-// Function to get cache duration based on endpoint
 const getCacheDuration = (url) => {
   if (url.includes("/user/profile")) return CACHE_CONFIG.USER_PROFILE;
   if (url.includes("/user/history")) return CACHE_CONFIG.USER_HISTORY;
@@ -40,9 +34,7 @@ const getCacheDuration = (url) => {
   return CACHE_CONFIG.DEFAULT;
 };
 
-// Function to deduplicate requests
 const deduplicateRequest = (key, requestFn, cacheDuration = 0) => {
-  // Check if request is already in progress
   if (requestCache.has(key)) {
     if (process.env.NODE_ENV === "development") {
       console.log(`🔄 Deduplicating request: ${key}`);
@@ -50,7 +42,6 @@ const deduplicateRequest = (key, requestFn, cacheDuration = 0) => {
     return requestCache.get(key);
   }
 
-  // Check data cache for GET requests
   if (cacheDuration > 0) {
     const cachedData = dataCache.get(key);
     if (cachedData && Date.now() - cachedData.timestamp < cacheDuration) {
@@ -61,10 +52,8 @@ const deduplicateRequest = (key, requestFn, cacheDuration = 0) => {
     }
   }
 
-  // Make the request
   const promise = requestFn()
     .then((response) => {
-      // Cache successful responses for GET requests
       if (cacheDuration > 0) {
         dataCache.set(key, {
           data: response,
@@ -74,50 +63,34 @@ const deduplicateRequest = (key, requestFn, cacheDuration = 0) => {
       return response;
     })
     .finally(() => {
-      // Remove from request cache after completion
       setTimeout(() => {
         requestCache.delete(key);
       }, 100);
     });
 
-  // Store the promise in request cache
   requestCache.set(key, promise);
   return promise;
 };
 
-// Function to clear cache
 const clearCache = (pattern = null) => {
   if (pattern) {
-    // Clear specific cache entries matching pattern
     for (const [key] of dataCache.entries()) {
       if (key.includes(pattern)) {
         dataCache.delete(key);
       }
     }
   } else {
-    // Clear all cache
     dataCache.clear();
   }
   requestCache.clear();
 };
 
-// Function to get the base URL based on environment
 const getBaseUrl = () => {
-  // Use environment variable if available
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-
-  // In development, use the full URL
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:5001";
-  }
-
-  // In production, use the same origin
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (process.env.NODE_ENV === "development") return "http://localhost:5001";
   return window.location.origin;
 };
 
-// Create an axios instance with a base URL
 const api = axios.create({
   baseURL: getBaseUrl(),
   headers: {
@@ -127,16 +100,12 @@ const api = axios.create({
   withCredentials: false,
 });
 
-// Add a request interceptor to add authentication token if available
 api.interceptors.request.use(
   (config) => {
-    // Check if we have a user with token in localStorage
     const user = localStorage.getItem("user");
-
     if (user) {
       try {
         const userData = JSON.parse(user);
-        // Add JWT token to authorization header if available
         if (userData.token) {
           config.headers.Authorization = `Bearer ${userData.token}`;
         }
@@ -146,7 +115,6 @@ api.interceptors.request.use(
       }
     }
 
-    // Add request timestamp for debugging and performance monitoring
     config.metadata = {
       startTime: new Date(),
       trackingKey: performanceMonitor.trackApiCall(config.method, config.url),
@@ -160,10 +128,8 @@ api.interceptors.request.use(
   }
 );
 
-// Add a response interceptor to handle common errors and logging
 api.interceptors.response.use(
   (response) => {
-    // Calculate request duration for debugging and performance monitoring
     if (response.config.metadata) {
       const duration = new Date() - response.config.metadata.startTime;
       console.log(
@@ -172,7 +138,6 @@ api.interceptors.response.use(
         } - ${response.status} (${duration}ms)`
       );
 
-      // Complete performance tracking
       if (response.config.metadata.trackingKey) {
         performanceMonitor.completeApiCall(
           response.config.metadata.trackingKey,
@@ -184,7 +149,6 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Calculate request duration for debugging and performance monitoring
     if (error.config?.metadata) {
       const duration = new Date() - error.config.metadata.startTime;
       console.log(
@@ -193,7 +157,6 @@ api.interceptors.response.use(
         } - ${error.response?.status || "Network Error"} (${duration}ms)`
       );
 
-      // Complete performance tracking for failed requests
       if (error.config.metadata.trackingKey) {
         performanceMonitor.completeApiCall(
           error.config.metadata.trackingKey,
@@ -203,15 +166,11 @@ api.interceptors.response.use(
       }
     }
 
-    // Handle specific error statuses
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
       const { status, data } = error.response;
 
       switch (status) {
         case 401:
-          // Unauthorized - handle token issues
           if (
             data?.error === "TOKEN_EXPIRED" ||
             data?.error === "INVALID_TOKEN"
@@ -219,7 +178,6 @@ api.interceptors.response.use(
             console.warn("Token expired or invalid, clearing user data");
             localStorage.removeItem("user");
 
-            // Only redirect to login if not already on login/register pages
             const currentPath = window.location.pathname;
             if (
               !currentPath.includes("/login") &&
@@ -232,7 +190,6 @@ api.interceptors.response.use(
           break;
 
         case 403:
-          // Forbidden
           console.error(
             "Access forbidden:",
             data?.message || "You don't have permission to access this resource"
@@ -240,7 +197,6 @@ api.interceptors.response.use(
           break;
 
         case 404:
-          // Not found
           console.warn(
             "Resource not found:",
             data?.message || "The requested resource was not found"
@@ -248,12 +204,10 @@ api.interceptors.response.use(
           break;
 
         case 409:
-          // Conflict (e.g., user already exists)
           console.warn("Conflict:", data?.message || "Resource conflict");
           break;
 
         case 422:
-          // Validation error
           console.warn(
             "Validation error:",
             data?.message || "Invalid data provided"
@@ -261,7 +215,6 @@ api.interceptors.response.use(
           break;
 
         case 429:
-          // Rate limiting
           console.warn(
             "Rate limit exceeded:",
             data?.message || "Too many requests"
@@ -272,7 +225,6 @@ api.interceptors.response.use(
         case 502:
         case 503:
         case 504:
-          // Server errors
           console.error(
             "Server error:",
             status,
@@ -284,12 +236,10 @@ api.interceptors.response.use(
           console.error("API error:", status, data?.message || "Unknown error");
       }
     } else if (error.code === "ECONNABORTED") {
-      // Request timeout
       console.error(
         "Request timed out. Please check your connection and try again."
       );
     } else if (error.request) {
-      // The request was made but no response was received
       console.error(
         "No response received. Server may be down or network issue:",
         error.message

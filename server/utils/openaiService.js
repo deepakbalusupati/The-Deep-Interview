@@ -1,14 +1,12 @@
 const { OpenAI } = require("openai");
 const dotenv = require("dotenv");
 
-// Load environment variables safely
 try {
   dotenv.config();
 } catch (error) {
   console.warn("Error loading .env file:", error.message);
 }
 
-// Configuration and initialization
 const apiKey = process.env.OPENAI_API_KEY;
 const isDevelopment = process.env.NODE_ENV === "development";
 const useMockData =
@@ -18,15 +16,13 @@ const useMockData =
 
 let openai = null;
 
-// Initialize OpenAI client if API key is available
 if (!useMockData) {
   try {
     openai = new OpenAI({
       apiKey: apiKey,
-      timeout: 30000, // 30 second timeout
+      timeout: 30000,
       maxRetries: 2,
     });
-    console.log("OpenAI API client initialized successfully");
   } catch (error) {
     console.error("Error initializing OpenAI client:", error.message);
     console.warn("Falling back to mock responses");
@@ -42,13 +38,11 @@ if (!useMockData) {
   );
 }
 
-// Helper function to sanitize inputs
 const sanitizeInput = (input, defaultValue = "", maxLength = 500) => {
   if (!input || typeof input !== "string") return defaultValue;
   return input.trim().substring(0, maxLength);
 };
 
-// Helper function to validate skill level
 const validateSkillLevel = (skillLevel) => {
   const validLevels = ["beginner", "intermediate", "expert"];
   return validLevels.includes(skillLevel?.toLowerCase())
@@ -56,7 +50,6 @@ const validateSkillLevel = (skillLevel) => {
     : "intermediate";
 };
 
-// Helper function to validate interview type
 const validateInterviewType = (interviewType) => {
   const validTypes = [
     "technical",
@@ -70,7 +63,6 @@ const validateInterviewType = (interviewType) => {
     : "mixed";
 };
 
-// Mock data generators for fallback scenarios
 const generateMockQuestions = (jobPosition, skillLevel, interviewType) => {
   const safeJobPosition = sanitizeInput(jobPosition, "Software Engineer");
   const safeSkillLevel = validateSkillLevel(skillLevel);
@@ -184,13 +176,8 @@ async function generateInterviewQuestions(
       ? previousQuestions
       : [];
 
-    console.log(
-      `Generating ${safeInterviewType} questions for ${safeSkillLevel} ${safeJobPosition}`
-    );
-
     // Use mock data if OpenAI is not available
     if (useMockData || !openai) {
-      console.log("Using mock interview questions");
       return {
         questions: generateMockQuestions(
           safeJobPosition,
@@ -279,7 +266,6 @@ Return a JSON object with this structure:
     console.error("Error generating interview questions:", error.message);
 
     // Fallback to mock questions
-    console.log("Falling back to mock questions due to error");
     return {
       questions: generateMockQuestions(jobPosition, skillLevel, interviewType),
       source: "fallback",
@@ -326,7 +312,6 @@ async function evaluateResponse(
 
     // Use mock evaluation if OpenAI is not available
     if (useMockData || !openai) {
-      console.log("Using mock response evaluation");
       const basicScore = generateBasicScore(safeResponse);
 
       return {
@@ -407,7 +392,6 @@ Please evaluate this response constructively.`;
     );
     evaluation.source = "openai";
 
-    console.log(`Evaluated response with score: ${evaluation.score}`);
     return evaluation;
   } catch (error) {
     console.error("Error evaluating response:", error.message);
@@ -447,7 +431,6 @@ async function analyzeResume(resumeText, jobPosition) {
   try {
     // Use mock data if in development mode and no API key
     if (isDevelopment && (!apiKey || apiKey === "your_api_key_here")) {
-      console.log("Using mock resume analysis for development");
       return {
         analysis:
           "[MOCK] The candidate has a strong background in relevant technologies.",
@@ -507,7 +490,6 @@ async function generateInterviewFeedback(questionResponses, jobPosition) {
   try {
     // Use mock data if in development mode and no API key
     if (isDevelopment && (!apiKey || apiKey === "your_api_key_here")) {
-      console.log("Using mock interview feedback for development");
       return {
         overall_score: 8,
         summary:

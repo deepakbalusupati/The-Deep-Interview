@@ -1,9 +1,6 @@
 const { spawn } = require("child_process");
 const path = require("path");
-const fs = require("fs");
-const os = require("os");
 
-// Kill any existing node processes on the specific ports
 const killProcessOnPort = (port) => {
   try {
     if (process.platform === "win32") {
@@ -25,7 +22,6 @@ const killProcessOnPort = (port) => {
         { stdio: "ignore" }
       );
     }
-    console.log(`Killed any process on port ${port}`);
   } catch (error) {
     // Ignore errors if no processes to kill
   }
@@ -53,15 +49,13 @@ server.on("error", (error) => {
 setTimeout(() => {
   console.log("Starting client on port 3000...");
 
-  // Set environment variables for the client
   const clientEnv = {
     ...process.env,
     PORT: 3000,
-    BROWSER: "none", // Don't open browser automatically
+    BROWSER: "none",
     REACT_APP_API_URL: "http://localhost:5001",
   };
 
-  // Start the client
   const client = spawn(
     process.platform === "win32" ? "npm.cmd" : "npm",
     ["start"],
@@ -81,4 +75,4 @@ setTimeout(() => {
   console.log("Server: http://localhost:5001");
   console.log("Client: http://localhost:3000");
   console.log("Press Ctrl+C to stop both processes.");
-}, 3000); // Wait 3 seconds for server to start
+}, 3000);

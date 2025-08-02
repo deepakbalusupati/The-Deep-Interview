@@ -1,4 +1,3 @@
-// Performance monitoring utility for tracking API calls and duplicate requests
 class PerformanceMonitor {
   constructor() {
     this.apiCalls = new Map();
@@ -6,7 +5,6 @@ class PerformanceMonitor {
     this.enabled = process.env.NODE_ENV === "development";
   }
 
-  // Track an API call
   trackApiCall(method, url, startTime = Date.now()) {
     if (!this.enabled) return;
 
@@ -21,12 +19,10 @@ class PerformanceMonitor {
     };
 
     if (this.apiCalls.has(key)) {
-      // This is a duplicate request
       const existingCall = this.apiCalls.get(key);
       if (existingCall.status === "pending") {
         console.warn(`🔄 Duplicate API call detected: ${key}`);
 
-        // Track duplicate
         if (this.duplicateRequests.has(key)) {
           this.duplicateRequests.set(key, this.duplicateRequests.get(key) + 1);
         } else {
@@ -39,7 +35,6 @@ class PerformanceMonitor {
     return key;
   }
 
-  // Mark an API call as completed
   completeApiCall(key, success = true, error = null) {
     if (!this.enabled) return;
 
@@ -50,13 +45,11 @@ class PerformanceMonitor {
       callData.status = success ? "success" : "error";
       callData.error = error;
 
-      // Log performance info
       const status = success ? "✅" : "❌";
       console.log(`${status} API Call: ${key} - ${callData.duration}ms`);
     }
   }
 
-  // Get performance statistics
   getStats() {
     if (!this.enabled) return null;
 
@@ -79,7 +72,6 @@ class PerformanceMonitor {
       );
       stats.averageResponseTime = totalDuration / completedCalls.length;
 
-      // Sort by duration
       const sortedCalls = completedCalls.sort(
         (a, b) => b.duration - a.duration
       );
@@ -90,7 +82,6 @@ class PerformanceMonitor {
     return stats;
   }
 
-  // Print performance report
   printReport() {
     if (!this.enabled) return;
 
@@ -124,22 +115,18 @@ class PerformanceMonitor {
     console.groupEnd();
   }
 
-  // Clear all tracking data
   clear() {
     this.apiCalls.clear();
     this.duplicateRequests.clear();
   }
 
-  // Enable/disable monitoring
   setEnabled(enabled) {
     this.enabled = enabled;
   }
 }
 
-// Create singleton instance
 const performanceMonitor = new PerformanceMonitor();
 
-// Auto-print report every 30 seconds in development
 if (process.env.NODE_ENV === "development") {
   setInterval(() => {
     performanceMonitor.printReport();

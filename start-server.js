@@ -1,6 +1,4 @@
 const { spawn } = require("child_process");
-const path = require("path");
-const fs = require("fs");
 
 // Kill any existing node processes (optional)
 try {
@@ -15,7 +13,6 @@ try {
 
 console.log("Starting server...");
 
-// Start the server
 const server = spawn("node", ["server/index.js"], {
   stdio: "inherit",
   shell: true,

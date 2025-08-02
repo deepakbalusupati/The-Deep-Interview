@@ -218,7 +218,6 @@ function InterviewSetup() {
           
           while (retryCount < maxRetries) {
             try {
-              console.log(`Attempt ${retryCount + 1} to create session`);
               response = await api.post('/api/interview/sessions', {
                 userId: currentUser?._id || null, // Allow anonymous users
                 jobPosition,
