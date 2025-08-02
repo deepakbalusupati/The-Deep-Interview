@@ -11,7 +11,6 @@ const uploadsDir = path.join(__dirname, "../../uploads");
 try {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`Created uploads directory: ${uploadsDir}`);
   }
 } catch (error) {
   console.error("Error creating uploads directory:", error);
@@ -33,12 +32,6 @@ const storage = multer.diskStorage({
 
 // Enhanced file filter for security
 const fileFilter = (req, file, cb) => {
-  console.log("File upload attempt:", {
-    originalname: file.originalname,
-    mimetype: file.mimetype,
-    size: file.size,
-  });
-
   // Check file extension
   const allowedExtensions = /\.pdf$/i;
   const extname = allowedExtensions.test(path.extname(file.originalname));
@@ -48,10 +41,8 @@ const fileFilter = (req, file, cb) => {
   const mimetype = allowedMimeTypes.includes(file.mimetype);
 
   if (mimetype && extname) {
-    console.log("File validation passed");
     return cb(null, true);
   } else {
-    console.log("File validation failed:", { mimetype, extname });
     const error = new Error("Only PDF files are allowed!");
     error.code = "INVALID_FILE_TYPE";
     cb(error, false);

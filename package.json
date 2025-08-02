@@ -12,8 +12,7 @@
     "dev:stable": "node start-server.js",
     "run": "node run-app.js",
     "build": "cd client && npm run build",
-    "install-all": "npm install && cd client && npm install",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "install-all": "npm install && cd client && npm install"
   },
   "keywords": [
     "interview",

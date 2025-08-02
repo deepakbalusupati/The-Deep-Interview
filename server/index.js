@@ -9,7 +9,6 @@ const { Server } = require("socket.io");
 const multer = require("multer");
 const fs = require("fs");
 
-// Load environment variables with better error handling
 try {
   const result = dotenv.config();
   if (result.error) {
@@ -22,7 +21,6 @@ try {
   console.log("Continuing with default environment variables...");
 }
 
-// Set default environment variables with validation
 const PORT = process.env.PORT || 5001;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 const MONGO_URI =
@@ -30,9 +28,8 @@ const MONGO_URI =
 const NODE_ENV = process.env.NODE_ENV || "development";
 const JWT_SECRET =
   process.env.JWT_SECRET || "default-jwt-secret-change-in-production";
-const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 5242880; // 5MB default
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 5242880;
 
-// Validate critical environment variables
 if (NODE_ENV === "production") {
   if (
     !process.env.OPENAI_API_KEY ||
@@ -127,7 +124,6 @@ const uploadsDir = path.join(__dirname, "..", "uploads");
 try {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`Created uploads directory: ${uploadsDir}`);
   }
 } catch (error) {
   console.error("Error creating uploads directory:", error);

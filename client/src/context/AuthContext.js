@@ -4,7 +4,6 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  useMemo,
 } from "react";
 import api from "../utils/api";
 import { v4 as uuidv4 } from "uuid";
@@ -21,60 +20,6 @@ export function AuthProvider({ children }) {
   const [debugMode, setDebugMode] = useState(false);
   const [serverAvailable, setServerAvailable] = useState(true);
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        // Check if user is logged in from localStorage
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          const userData = JSON.parse(storedUser);
-
-          // Validate stored user data
-          if (userData && userData.token && userData._id) {
-            // Verify token is still valid by making a test request
-            try {
-              const response = await api.getWithCache(
-                `/api/user/profile?userId=${userData._id}`
-              );
-              if (response.data.success) {
-                setCurrentUser(userData);
-              } else {
-                // Token is invalid, clear stored data
-                console.warn("Stored token is invalid, clearing user data");
-                api.clearUserData();
-              }
-            } catch (error) {
-              // Token verification failed, clear stored data
-              console.warn(
-                "Token verification failed, clearing user data:",
-                error.message
-              );
-              api.clearUserData();
-            }
-          } else {
-            // Invalid user data structure, clear it
-            console.warn("Invalid user data structure, clearing storage");
-            api.clearUserData();
-          }
-        }
-
-        // Check if debug mode is enabled
-        const isDebugMode = localStorage.getItem("debugMode") === "true";
-        setDebugMode(isDebugMode);
-
-        // Check server availability
-        await checkServerHealth();
-      } catch (error) {
-        console.error("Error initializing auth:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
-  }, []);
-
-  // Check if the server is available (memoized to prevent unnecessary calls)
   const checkServerHealth = useCallback(async () => {
     try {
       const response = await api.getWithCache("/api/health", { timeout: 5000 });
@@ -88,13 +33,57 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Toggle debug mode
-  const toggleDebugMode = () => {
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+
+          if (userData && userData.token && userData._id) {
+            try {
+              const response = await api.getWithCache(
+                `/api/user/profile?userId=${userData._id}`
+              );
+              if (response.data.success) {
+                setCurrentUser(userData);
+              } else {
+                console.warn("Stored token is invalid, clearing user data");
+                api.clearUserData();
+              }
+            } catch (error) {
+              console.warn(
+                "Token verification failed, clearing user data:",
+                error.message
+              );
+              api.clearUserData();
+            }
+          } else {
+            console.warn("Invalid user data structure, clearing storage");
+            api.clearUserData();
+          }
+        }
+
+        const isDebugMode = localStorage.getItem("debugMode") === "true";
+        setDebugMode(isDebugMode);
+
+        await checkServerHealth();
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, [checkServerHealth]);
+
+  const toggleDebugMode = useCallback(() => {
     const newDebugMode = !debugMode;
     setDebugMode(newDebugMode);
     localStorage.setItem("debugMode", newDebugMode.toString());
     return newDebugMode;
-  };
+  }, [debugMode]);
 
   // Register a new user
   const register = async (name, email, password) => {
@@ -340,31 +329,21 @@ export function AuthProvider({ children }) {
   }, [currentUser?._id, currentUser?.token]);
 
   // Memoize the context value to prevent unnecessary re-renders
-  const value = useMemo(
-    () => ({
-      currentUser,
-      loading,
-      serverAvailable,
-      debugMode,
-      register,
-      login,
-      logout,
-      updateUser,
-      isAuthenticated,
-      getToken,
-      refreshUser,
-      checkServerHealth,
-      toggleDebugMode,
-    }),
-    [
-      currentUser,
-      loading,
-      serverAvailable,
-      debugMode,
-      refreshUser,
-      checkServerHealth,
-    ]
-  );
+  const value = {
+    currentUser,
+    loading,
+    serverAvailable,
+    debugMode,
+    register,
+    login,
+    logout,
+    updateUser,
+    isAuthenticated,
+    getToken,
+    refreshUser,
+    checkServerHealth,
+    toggleDebugMode,
+  };
 
   return (
     <AuthContext.Provider value={value}>
